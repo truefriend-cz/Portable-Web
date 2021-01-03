@@ -11,7 +11,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111-1301 USA */
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335 USA */
 
 /* Definitions for mysys/my_default.c */
 
@@ -20,27 +20,16 @@
 
 C_MODE_START
 
-extern const char *my_defaults_extra_file;
+extern MYSQL_PLUGIN_IMPORT const char *my_defaults_extra_file;
 extern const char *my_defaults_group_suffix;
-extern const char *my_defaults_file;
-extern my_bool my_getopt_use_args_separator;
-extern my_bool my_getopt_is_args_separator(const char* arg);
+extern MYSQL_PLUGIN_IMPORT const char *my_defaults_file;
+extern my_bool my_defaults_mark_files;
 
-/* Define the type of function to be passed to process_default_option_files */
-typedef int (*Process_option_func)(void *ctx, const char *group_name,
-                                   const char *option);
-
-extern int get_defaults_options(int argc, char **argv,
-                                char **defaults, char **extra_defaults,
-                                char **group_suffix);
+extern int get_defaults_options(char **argv);
 extern int my_load_defaults(const char *conf_file, const char **groups,
                             int *argc, char ***argv, const char ***);
 extern int load_defaults(const char *conf_file, const char **groups,
                          int *argc, char ***argv);
-extern int my_search_option_files(const char *conf_file, int *argc,
-                                  char ***argv, uint *args_used,
-                                  Process_option_func func, void *func_ctx,
-                                  const char **default_directories);
 extern void free_defaults(char **argv);
 extern void my_print_default_files(const char *conf_file);
 extern void print_defaults(const char *conf_file, const char **groups);

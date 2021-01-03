@@ -11,7 +11,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1335  USA */
 
 /**
   @file
@@ -64,7 +64,7 @@
     CREATE TABLE t1 (c VARBINARY(65534));
     CREATE TABLE t1 (c VARBINARY(65535));
   Like VARCHAR(65536), they will be converted to BLOB automatically
-  in non-sctict mode.
+  in non-strict mode.
 */
 #define MAX_FIELD_VARCHARLENGTH	(65535-2-1)
 #define MAX_FIELD_BLOBLENGTH UINT_MAX32         /* cf field_blob::get_length() */
@@ -204,7 +204,12 @@
   instead of reading with keys.  The number says how many evaluation of the
   WHERE clause is comparable to reading one extra row from a table.
 */
-#define TIME_FOR_COMPARE   5	// 5 compares == one read
+#define TIME_FOR_COMPARE         5.0	//  5 WHERE compares == one read
+#define TIME_FOR_COMPARE_IDX    20.0
+
+#define IDX_BLOCK_COPY_COST  ((double) 1 / TIME_FOR_COMPARE)
+#define IDX_LOOKUP_COST      ((double) 1 / 8)
+#define MULTI_RANGE_READ_SETUP_COST (IDX_BLOCK_COPY_COST/10)
 
 /**
   Number of comparisons of table rowids equivalent to reading one row from a 
@@ -242,6 +247,14 @@
 #define HEAP_TEMPTABLE_LOOKUP_COST 0.05
 #define DISK_TEMPTABLE_LOOKUP_COST 1.0
 #define SORT_INDEX_CMP_COST 0.02
+
+
+#define COST_MAX (DBL_MAX * (1.0 - DBL_EPSILON))
+
+#define COST_ADD(c,d) (COST_MAX - (d) > (c) ? (c) + (d) : COST_MAX)
+
+#define COST_MULT(c,f) (COST_MAX / (f) > (c) ? (c) * (f) : COST_MAX)
+
 
 #define MY_CHARSET_BIN_MB_MAXLEN 1
 
@@ -296,5 +309,7 @@
 #define WAIT_PRIOR	8
 #define QUERY_PRIOR	6
 #endif /* __WIN92__ */
+
+#define SP_PSI_STATEMENT_INFO_COUNT 19
 
 #endif /* SQL_CONST_INCLUDED */

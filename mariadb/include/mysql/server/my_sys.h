@@ -1,5 +1,5 @@
 /* Copyright (c) 2000, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2010, 2017, MariaDB Corporation.
+   Copyright (c) 2010, 2020, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -12,27 +12,19 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA */
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1335  USA */
 
 #ifndef _my_sys_h
 #define _my_sys_h
 
 #include <m_string.h>
+#include <mysql/psi/mysql_memory.h>
 
 C_MODE_START
 
-#ifdef HAVE_AIOWAIT
-#include <sys/asynch.h>			/* Used by record-cache */
-typedef struct my_aio_result {
-  aio_result_t result;
-  int	       pending;
-} my_aio_result;
-#endif
 
 #include <my_valgrind.h>
-
 #include <my_pthread.h>
-
 #include <m_ctype.h>                    /* for CHARSET_INFO */
 #include <stdarg.h>
 #include <typelib.h>
@@ -66,6 +58,7 @@ typedef struct my_aio_result {
 #define MY_WME		16U	/* Write message on error */
 #define MY_WAIT_IF_FULL 32U	/* Wait and try again if disk full error */
 #define MY_IGNORE_BADFD 32U     /* my_sync(): ignore 'bad descriptor' errors */
+#define MY_IGNORE_ENOENT 32U    /* my_delete() ignores ENOENT (no such file) */
 #define MY_ENCRYPT      64U     /* Encrypt IO_CACHE temporary files */
 #define MY_TEMPORARY    64U     /* create_temp_file(): delete file at once */
 #define MY_NOSYMLINKS  512U     /* my_open(): don't follow symlinks */
@@ -89,14 +82,12 @@ typedef struct my_aio_result {
 #define MY_ZEROFILL	32U	/* my_malloc(), fill array with zero */
 #define MY_ALLOW_ZERO_PTR 64U	/* my_realloc() ; zero ptr -> malloc */
 #define MY_FREE_ON_ERROR 128U	/* my_realloc() ; Free old ptr on error */
-#define MY_HOLD_ON_ERROR 256U	/* my_realloc() ; Return old ptr on error */
 #define MY_DONT_OVERWRITE_FILE 2048U /* my_copy: Don't overwrite file */
 #define MY_THREADSAFE 2048U     /* my_seek(): lock fd mutex */
 #define MY_SYNC       4096U     /* my_copy(): sync dst file */
 #define MY_SYNC_DIR   32768U    /* my_create/delete/rename: sync directory */
 #define MY_SYNC_FILESIZE 65536U /* my_sync(): safe sync when file is extended */
 #define MY_THREAD_SPECIFIC 0x10000U /* my_malloc(): thread specific */
-#define MY_THREAD_MOVE     0x20000U /* realloc(); Memory can move */
 /* Tree that should delete things automatically */
 #define MY_TREE_WITH_DELETE 0x40000U
 
@@ -104,13 +95,12 @@ typedef struct my_aio_result {
 #define MY_GIVE_INFO	2U	/* Give time info about process*/
 #define MY_DONT_FREE_DBUG 4U    /* Do not call DBUG_END() in my_end() */
 
-#define ME_BELL         4U      /* Ring bell then printing message */
-#define ME_WAITTANG     0       /* Wait for a user action  */
-#define ME_NOREFRESH    64U     /* Write the error message to error log */
-#define ME_NOINPUT      0       /* Don't use the input library */
-#define ME_JUST_INFO    1024U   /**< not error but just info */
-#define ME_JUST_WARNING 2048U   /**< not error but just warning */
-#define ME_FATALERROR   4096U   /* Fatal statement error */
+#define ME_BELL           4U    /* Ring bell then printing message */
+#define ME_ERROR_LOG      64    /**< write the error message to error log */
+#define ME_ERROR_LOG_ONLY 128   /**< write the error message to error log only */
+#define ME_NOTE           1024  /**< not error but just info */
+#define ME_WARNING        2048  /**< not error but just warning */
+#define ME_FATAL          4096  /**< fatal statement error */
 
 	/* Bits in last argument to fn_format */
 #define MY_REPLACE_DIR		1U	/* replace dir in name with 'dir' */
@@ -169,24 +159,22 @@ typedef void (*MALLOC_SIZE_CB) (long long size, my_bool is_thread_specific);
 extern void set_malloc_size_cb(MALLOC_SIZE_CB func);
 
 	/* defines when allocating data */
-extern void *my_malloc(size_t Size,myf MyFlags);
-extern void *my_multi_malloc(myf MyFlags, ...);
-extern void *my_multi_malloc_large(myf MyFlags, ...);
-extern void *my_realloc(void *oldpoint, size_t Size, myf MyFlags);
+extern void *my_malloc(PSI_memory_key key, size_t size, myf MyFlags);
+extern void *my_multi_malloc(PSI_memory_key key, myf MyFlags, ...);
+extern void *my_multi_malloc_large(PSI_memory_key key, myf MyFlags, ...);
+extern void *my_realloc(PSI_memory_key key, void *ptr, size_t size, myf MyFlags);
 extern void my_free(void *ptr);
-extern void *my_memdup(const void *from,size_t length,myf MyFlags);
-extern char *my_strdup(const char *from,myf MyFlags);
-extern char *my_strndup(const char *from, size_t length, myf MyFlags);
+extern void *my_memdup(PSI_memory_key key, const void *from,size_t length,myf MyFlags);
+extern char *my_strdup(PSI_memory_key key, const char *from,myf MyFlags);
+extern char *my_strndup(PSI_memory_key key, const char *from, size_t length, myf MyFlags);
 
-#ifdef HAVE_LINUX_LARGE_PAGES
-extern uint my_get_large_page_size(void);
-extern uchar * my_large_malloc(size_t size, myf my_flags);
-extern void my_large_free(uchar *ptr);
-#else
-#define my_get_large_page_size() (0)
-#define my_large_malloc(A,B) my_malloc_lock((A),(B))
-#define my_large_free(A) my_free_lock((A))
-#endif /* HAVE_LINUX_LARGE_PAGES */
+int my_init_large_pages(my_bool super_large_pages);
+uchar *my_large_malloc(size_t *size, myf my_flags);
+void my_large_free(void *ptr, size_t size);
+
+#ifdef _WIN32
+extern BOOL my_obtain_privilege(LPCSTR lpPrivilege);
+#endif
 
 void my_init_atomic_write(void);
 #ifdef __linux__
@@ -212,11 +200,11 @@ extern my_bool my_may_have_atomic_write;
 #define MAX_ALLOCA_SZ 4096
 #define my_safe_alloca(size) (((size) <= MAX_ALLOCA_SZ) ? \
                                my_alloca(size) : \
-                               my_malloc((size), MYF(MY_THREAD_SPECIFIC|MY_WME)))
+                               my_malloc(PSI_NOT_INSTRUMENTED, (size), MYF(MY_THREAD_SPECIFIC|MY_WME)))
 #define my_safe_afree(ptr, size) \
                   do { if ((size) > MAX_ALLOCA_SZ) my_free(ptr); } while(0)
 #else
-#define my_alloca(SZ) my_malloc(SZ,MYF(MY_FAE))
+#define my_alloca(SZ) my_malloc(PSI_NOT_INSTRUMENTED, SZ,MYF(MY_FAE))
 #define my_afree(PTR) my_free(PTR)
 #define my_safe_alloca(size) my_alloca(size)
 #define my_safe_afree(ptr, size) my_afree(ptr)
@@ -244,11 +232,6 @@ extern int sf_leaking_memory; /* set to 1 to disable memleak detection */
 extern void (*proc_info_hook)(void *, const PSI_stage_info *, PSI_stage_info *,
                               const char *, const char *, const unsigned int);
 
-#ifdef HAVE_LINUX_LARGE_PAGES
-extern my_bool my_use_large_pages;
-extern uint    my_large_page_size;
-#endif
-
 /* charsets */
 #define MY_ALL_CHARSETS_SIZE 2048
 extern MYSQL_PLUGIN_IMPORT CHARSET_INFO *default_charset_info;
@@ -261,11 +244,13 @@ extern ulonglong my_collation_statistics_get_use_count(uint id);
 extern const char *my_collation_get_tailoring(uint id);
 
 /* statistics */
-extern ulong	my_file_opened,my_stream_opened, my_tmp_file_created;
+extern ulong    my_stream_opened, my_tmp_file_created;
 extern ulong    my_file_total_opened;
 extern ulong    my_sync_count;
 extern uint	mysys_usage_id;
+extern int32    my_file_opened;
 extern my_bool	my_init_done, my_thr_key_mysys_exists;
+extern my_bool my_assert;
 extern my_bool  my_assert_on_error;
 extern myf      my_global_flags;        /* Set to MY_WME for more error messages */
 					/* Point to current my_message() */
@@ -286,7 +271,6 @@ extern my_bool  my_disable_locking, my_disable_async_io,
 extern my_bool my_disable_sync, my_disable_copystat_in_redel;
 extern char	wild_many,wild_one,wild_prefix;
 extern const char *charsets_dir;
-extern my_bool timed_mutexes;
 
 enum cache_type
 {
@@ -319,17 +303,13 @@ typedef struct st_record_cache	/* Used when caching records */
   uint	rc_length,read_length,reclength;
   my_off_t rc_record_pos,end_of_file;
   uchar *rc_buff,*rc_buff2,*rc_pos,*rc_end,*rc_request_pos;
-#ifdef HAVE_AIOWAIT
-  int	use_async_io;
-  my_aio_result aio_result;
-#endif
   enum cache_type type;
 } RECORD_CACHE;
 
 enum file_type
 {
   UNOPEN = 0, FILE_BY_OPEN, FILE_BY_CREATE, STREAM_BY_FOPEN, STREAM_BY_FDOPEN,
-  FILE_BY_MKSTEMP, FILE_BY_DUP
+  FILE_BY_O_TMPFILE, FILE_BY_MKSTEMP, FILE_BY_DUP
 };
 
 struct st_my_file_info
@@ -353,6 +333,7 @@ typedef struct st_dynamic_array
   uint elements,max_element;
   uint alloc_increment;
   uint size_of_element;
+  PSI_memory_key m_psi_key;
   myf malloc_flags;
 } DYNAMIC_ARRAY;
 
@@ -478,27 +459,19 @@ typedef struct st_io_cache		/* Used when caching files */
     partial.
   */
   int	seek_not_done,error;
-  /* buffer_length is memory size allocated for buffer or write_buffer */
+  /* length of the buffer used for storing un-encrypted data */
   size_t	buffer_length;
   /* read_length is the same as buffer_length except when we use async io */
   size_t  read_length;
   myf	myflags;			/* Flags used to my_read/my_write */
   /*
-    alloced_buffer is 1 if the buffer was allocated by init_io_cache() and
-    0 if it was supplied by the user.
+    alloced_buffer is set to the size of the buffer allocated for the IO_CACHE.
+    Includes the overhead(storing key to ecnrypt and decrypt) for encryption.
+    Set to 0 if nothing is allocated.
     Currently READ_NET is the only one that will use a buffer allocated
     somewhere else
   */
-  my_bool alloced_buffer;
-#ifdef HAVE_AIOWAIT
-  /*
-    As inidicated by ifdef, this is for async I/O, which is not currently
-    used (because it's not reliable on all systems)
-  */
-  uint inited;
-  my_off_t aio_read_pos;
-  my_aio_result aio_result;
-#endif
+  size_t alloced_buffer;
 } IO_CACHE;
 
 typedef int (*qsort2_cmp)(const void *, const void *, const void *);
@@ -507,6 +480,8 @@ typedef void (*my_error_reporter)(enum loglevel level, const char *format, ...)
   ATTRIBUTE_FORMAT_FPTR(printf, 2, 3);
 
 extern my_error_reporter my_charset_error_reporter;
+
+extern PSI_file_key key_file_io_cache;
 
 /* inline functions for mf_iocache */
 
@@ -533,6 +508,7 @@ static inline int my_b_read(IO_CACHE *info, uchar *Buffer, size_t Count)
 
 static inline int my_b_write(IO_CACHE *info, const uchar *Buffer, size_t Count)
 {
+  MEM_CHECK_DEFINED(Buffer, Count);
   if (info->write_pos + Count <= info->write_end)
   {
     memcpy(info->write_pos, Buffer, Count);
@@ -554,6 +530,7 @@ static inline int my_b_get(IO_CACHE *info)
 
 static inline my_bool my_b_write_byte(IO_CACHE *info, uchar chr)
 {
+  MEM_CHECK_DEFINED(&chr, 1);
   if (info->write_pos >= info->write_end)
     if (my_b_flush_io_cache(info, 1))
       return 1;
@@ -690,16 +667,17 @@ int my_set_user(const char *user, struct passwd *user_info, myf MyFlags);
 extern int check_if_legal_filename(const char *path);
 extern int check_if_legal_tablename(const char *path);
 
-#ifdef __WIN__
+#ifdef _WIN32
 extern my_bool is_filename_allowed(const char *name, size_t length,
                    my_bool allow_current_dir);
-#else /* __WIN__ */
+#else /* _WIN32 */
 # define is_filename_allowed(name, length, allow_cwd) (TRUE)
-#endif /* __WIN__ */ 
+#endif /* _WIN32 */ 
 
 #ifdef _WIN32
 /* Windows-only functions (CRT equivalents)*/
 extern HANDLE   my_get_osfhandle(File fd);
+extern File     my_win_handle2File(HANDLE hFile);
 extern void     my_osmaperr(unsigned long last_error);
 #endif
 
@@ -799,6 +777,10 @@ my_off_t my_get_ptr(uchar *ptr, size_t pack_length);
 extern int init_io_cache(IO_CACHE *info,File file,size_t cachesize,
 			 enum cache_type type,my_off_t seek_offset,
 			 my_bool use_async_io, myf cache_myflags);
+extern int init_io_cache_ext(IO_CACHE *info, File file, size_t cachesize,
+                              enum cache_type type, my_off_t seek_offset,
+                              pbool use_async_io, myf cache_myflags,
+                              PSI_file_key file_key);
 extern my_bool reinit_io_cache(IO_CACHE *info,enum cache_type type,
 			       my_off_t seek_offset, my_bool use_async_io,
 			       my_bool clear_cache);
@@ -810,7 +792,6 @@ void end_slave_io_cache(IO_CACHE *cache);
 void seek_io_cache(IO_CACHE *cache, my_off_t needed_offset);
 
 extern void remove_io_thread(IO_CACHE *info);
-extern int _my_b_async_read(IO_CACHE *info,uchar *Buffer,size_t Count);
 extern int my_b_append(IO_CACHE *info,const uchar *Buffer,size_t Count);
 extern int my_b_safe_write(IO_CACHE *info,const uchar *Buffer,size_t Count);
 
@@ -834,11 +815,12 @@ extern my_bool real_open_cached_file(IO_CACHE *cache);
 extern void close_cached_file(IO_CACHE *cache);
 File create_temp_file(char *to, const char *dir, const char *pfx,
 		      int mode, myf MyFlags);
-#define my_init_dynamic_array(A,B,C,D,E) init_dynamic_array2(A,B,NULL,C,D,E)
-#define my_init_dynamic_array2(A,B,C,D,E,F) init_dynamic_array2(A,B,C,D,E,F)
-extern my_bool init_dynamic_array2(DYNAMIC_ARRAY *array, uint element_size,
-                                   void *init_buffer, uint init_alloc,
-                                   uint alloc_increment, myf my_flags);
+#define my_init_dynamic_array(A,B,C,D,E,F) init_dynamic_array2(A,B,C,NULL,D,E,F)
+#define my_init_dynamic_array2(A,B,C,D,E,F,G) init_dynamic_array2(A,B,C,D,E,F,G)
+extern my_bool init_dynamic_array2(PSI_memory_key psi_key, DYNAMIC_ARRAY *array,
+                                   uint element_size, void *init_buffer,
+                                   uint init_alloc, uint alloc_increment,
+                                   myf my_flags);
 extern my_bool insert_dynamic(DYNAMIC_ARRAY *array, const void* element);
 extern void *alloc_dynamic(DYNAMIC_ARRAY *array);
 extern void *pop_dynamic(DYNAMIC_ARRAY*);
@@ -885,13 +867,14 @@ extern uint32 copy_and_convert_extended(char *to, uint32 to_length,
 extern void *my_malloc_lock(size_t length,myf flags);
 extern void my_free_lock(void *ptr);
 #else
-#define my_malloc_lock(A,B) my_malloc((A),(B))
+#define my_malloc_lock(A,B) my_malloc(PSI_INSTRUMENT_ME, (A),(B))
 #define my_free_lock(A) my_free((A))
 #endif
+#define root_name(A) ""
 #define alloc_root_inited(A) ((A)->min_malloc != 0)
 #define ALLOC_ROOT_MIN_BLOCK_SIZE (MALLOC_OVERHEAD + sizeof(USED_MEM) + 8)
 #define clear_alloc_root(A) do { (A)->free= (A)->used= (A)->pre_alloc= 0; (A)->min_malloc=0;} while(0)
-extern void init_alloc_root(MEM_ROOT *mem_root, const char *name,
+extern void init_alloc_root(PSI_memory_key key, MEM_ROOT *mem_root,
                             size_t block_size, size_t pre_alloc_size,
                             myf my_flags);
 extern void *alloc_root(MEM_ROOT *mem_root, size_t Size);
@@ -907,6 +890,7 @@ static inline char *safe_strdup_root(MEM_ROOT *root, const char *str)
 }
 extern char *strmake_root(MEM_ROOT *root,const char *str,size_t len);
 extern void *memdup_root(MEM_ROOT *root,const void *str, size_t len);
+extern LEX_CSTRING safe_lexcstrdup_root(MEM_ROOT *root, const LEX_CSTRING str);
 extern my_bool my_compress(uchar *, size_t *, size_t *);
 extern my_bool my_uncompress(uchar *, size_t , size_t *);
 extern uchar *my_compress_alloc(const uchar *packet, size_t *len,
@@ -918,8 +902,11 @@ extern int my_compress_buffer(uchar *dest, size_t *destLen,
 extern int packfrm(const uchar *, size_t, uchar **, size_t *);
 extern int unpackfrm(uchar **, size_t *, const uchar *);
 
-extern ha_checksum my_checksum(ha_checksum crc, const uchar *mem,
-                               size_t count);
+extern uint32 my_checksum(uint32, const void *, size_t);
+extern uint32 my_crc32c(uint32, const void *, size_t);
+
+extern const char *my_crc32c_implementation();
+
 #ifdef DBUG_ASSERT_EXISTS
 extern void my_debug_put_break_here(void);
 #else
@@ -927,7 +914,6 @@ extern void my_debug_put_break_here(void);
 #endif
 
 extern void my_sleep(ulong m_seconds);
-extern ulong crc32(ulong crc, const uchar *buf, uint len);
 extern uint my_set_max_open_files(uint files);
 void my_free_open_file_info(void);
 
@@ -949,7 +935,7 @@ extern ulonglong my_interval_timer(void);
 extern ulonglong my_getcputime(void);
 
 #define microsecond_interval_timer()    (my_interval_timer()/1000)
-#define hrtime_to_time(X)               ((X).val/HRTIME_RESOLUTION)
+#define hrtime_to_time(X)               ((time_t)((X).val/HRTIME_RESOLUTION))
 #define hrtime_from_time(X)             ((ulonglong)((X)*HRTIME_RESOLUTION))
 #define hrtime_to_double(X)             ((X).val/(double)HRTIME_RESOLUTION)
 #define hrtime_sec_part(X)              ((ulong)((X).val % HRTIME_RESOLUTION))
@@ -961,14 +947,25 @@ extern ulonglong my_getcputime(void);
 #define available_stack_size(CUR,END) (long) ((char*)(END) - (char*)(CUR))
 #endif
 
-#ifdef HAVE_SYS_MMAN_H
-#include <sys/mman.h>
+#ifndef MAP_SYNC
+#define MAP_SYNC 0x80000
+#endif
+#ifndef MAP_SHARED_VALIDATE
+#define MAP_SHARED_VALIDATE 0x03
+#endif
 
+#ifdef HAVE_SYS_MMAN_H
 #ifndef MAP_NOSYNC
 #define MAP_NOSYNC      0
 #endif
 #ifndef MAP_NORESERVE
 #define MAP_NORESERVE 0         /* For irix and AIX */
+#endif
+
+/* Compatibility with pre linux 3.8 distributions */
+#ifdef __linux__
+#define MAP_HUGE_SHIFT 26
+#define MAP_HUGETLB 0x40000
 #endif
 
 #ifdef HAVE_MMAP64
@@ -992,6 +989,16 @@ extern ulonglong my_getcputime(void);
 #define HAVE_MMAP
 void *my_mmap(void *, size_t, int, int, int, my_off_t);
 int my_munmap(void *, size_t);
+#endif
+
+#ifdef _WIN32
+extern FILE* my_win_popen(const char*, const char*);
+extern int my_win_pclose(FILE*);
+#define my_popen(A,B) my_win_popen(A,B)
+#define my_pclose(A) my_win_pclose(A)
+#else
+#define my_popen(A,B) popen(A,B)
+#define my_pclose(A) pclose(A)
 #endif
 
 /* my_getpagesize */
@@ -1036,18 +1043,23 @@ extern my_bool resolve_collation(const char *cl_name,
                                  CHARSET_INFO **cl);
 extern void free_charsets(void);
 extern char *get_charsets_dir(char *buf);
-extern my_bool my_charset_same(CHARSET_INFO *cs1, CHARSET_INFO *cs2);
+static inline my_bool my_charset_same(CHARSET_INFO *cs1, CHARSET_INFO *cs2)
+{
+  return (cs1->csname == cs2->csname);
+}
 extern my_bool init_compiled_charsets(myf flags);
 extern void add_compiled_collation(struct charset_info_st *cs);
+extern void add_compiled_extra_collation(struct charset_info_st *cs);
 extern size_t escape_string_for_mysql(CHARSET_INFO *charset_info,
                                       char *to, size_t to_length,
                                       const char *from, size_t length);
 extern char *get_tty_password(const char *opt_message);
-#ifdef __WIN__
+#ifdef _WIN32
 #define BACKSLASH_MBTAIL
 /* File system character set */
 extern CHARSET_INFO *fs_character_set(void);
 #endif
+extern const char *my_default_csname(void);
 extern size_t escape_quotes_for_mysql(CHARSET_INFO *charset_info,
                                       char *to, size_t to_length,
                                       const char *from, size_t length);
@@ -1056,15 +1068,7 @@ extern void thd_increment_bytes_sent(void *thd, size_t length);
 extern void thd_increment_bytes_received(void *thd, size_t length);
 extern void thd_increment_net_big_packet_count(void *thd, size_t length);
 
-#ifdef __WIN__
-extern my_bool have_tcpip;		/* Is set if tcpip is used */
-
-/* implemented in my_windac.c */
-
-int my_security_attr_create(SECURITY_ATTRIBUTES **psa, const char **perror,
-                            DWORD owner_rights, DWORD everybody_rights);
-
-void my_security_attr_free(SECURITY_ATTRIBUTES *sa);
+#ifdef _WIN32
 
 /* implemented in my_conio.c */
 char* my_cgets(char *string, size_t clen, size_t* plen);

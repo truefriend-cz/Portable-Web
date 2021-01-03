@@ -13,7 +13,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 /**
   @defgroup Event_Scheduler Event Scheduler
@@ -30,6 +30,8 @@ extern PSI_mutex_key key_event_scheduler_LOCK_scheduler_state;
 extern PSI_cond_key key_event_scheduler_COND_state;
 extern PSI_thread_key key_thread_event_scheduler, key_thread_event_worker;
 #endif /* HAVE_PSI_INTERFACE */
+
+extern PSI_memory_key key_memory_event_basic_root;
 
 /* Always defined, for SHOW PROCESSLIST. */
 extern PSI_stage_info stage_waiting_on_empty_queue;

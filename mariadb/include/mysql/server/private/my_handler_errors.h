@@ -15,7 +15,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335 USA */
+   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335 USA */
 
 /*
   Errors a handler can give you
@@ -101,7 +101,7 @@ static const char *handler_error_messages[]=
   "Operation was interrupted by end user (probably kill command?)",
   "Disk full",
   /* 190 */
-  "Incompatible key or row definition between the MariaDB .frm file and the information in the storage engine. You have to dump and restore the table to fix this",
+  "Incompatible key or row definition between the MariaDB .frm file and the information in the storage engine. You may have retry or dump and restore the table to fix this",
   "Too many words in a FTS phrase or proximity search",
   "Table encrypted but decryption failed. This could be because correct encryption management plugin is not loaded, used encryption key is not available or encryption method does not match.",
   "Foreign key cascade delete/update exceeds max depth",

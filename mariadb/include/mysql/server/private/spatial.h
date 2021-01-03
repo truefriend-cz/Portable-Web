@@ -13,7 +13,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #ifndef _spatial_h
 #define _spatial_h
@@ -145,12 +145,7 @@ struct MBR
              (mbr->xmax >= xmin && mbr->xmax <= xmax)));
   }
 
-  int within(const MBR *mbr)
-  {
-    /* The following should be safe, even if we compare doubles */
-    return ((mbr->xmin <= xmin) && (mbr->ymin <= ymin) &&
-	    (mbr->xmax >= xmax) && (mbr->ymax >= ymax));
-  }
+  int within(const MBR *mbr);
 
   int contains(const MBR *mbr)
   {
@@ -322,6 +317,7 @@ public:
                                     bool er_on_3D, String *res);
   static Geometry *create_from_opresult(Geometry_buffer *g_buf,
                                   String *res, Gcalc_result_receiver &rr);
+  static uint get_key_image_itMBR(LEX_CSTRING &src, uchar *buff, uint length);
   int as_wkt(String *wkt, const char **end);
   int as_json(String *wkt, uint max_dec_digits, const char **end);
   int bbox_as_json(String *wkt);

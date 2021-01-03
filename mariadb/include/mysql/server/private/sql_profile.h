@@ -11,7 +11,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #ifndef _SQL_PROFILE_H
 #define _SQL_PROFILE_H
@@ -19,10 +19,13 @@
 class Item;
 struct TABLE_LIST;
 class THD;
-typedef struct st_field_info ST_FIELD_INFO;
+class ST_FIELD_INFO;
 typedef struct st_schema_table ST_SCHEMA_TABLE;
 
+namespace Show {
 extern ST_FIELD_INFO query_profile_statistics_info[];
+} // namespace Show
+
 int fill_query_profile_statistics_info(THD *thd, TABLE_LIST *tables, Item *cond);
 int make_profile_table_for_show(THD *thd, ST_SCHEMA_TABLE *schema_table);
 
@@ -51,6 +54,7 @@ int make_profile_table_for_show(THD *thd, ST_SCHEMA_TABLE *schema_table);
 #include <sys/resource.h>
 #endif
 
+extern PSI_memory_key key_memory_queue_item;
 
 class PROF_MEASUREMENT;
 class QUERY_PROFILE;
@@ -97,7 +101,8 @@ public:
   {
     struct queue_item *new_item;
 
-    new_item= (struct queue_item *) my_malloc(sizeof(struct queue_item), MYF(0));
+    new_item= (struct queue_item *) my_malloc(key_memory_queue_item,
+                                              sizeof(struct queue_item), MYF(0));
 
     new_item->payload= payload;
 

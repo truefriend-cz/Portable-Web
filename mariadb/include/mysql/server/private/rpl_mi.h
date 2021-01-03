@@ -11,7 +11,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #ifndef RPL_MI_H
 #define RPL_MI_H
@@ -329,13 +329,13 @@ class Master_info : public Slave_reporting_capability
 
 
   /* No of DDL event group */
-  volatile uint64 total_ddl_groups;
+  Atomic_counter<uint64> total_ddl_groups;
 
   /* No of non-transactional event group*/
-  volatile uint64 total_non_trans_groups;
+  Atomic_counter<uint64> total_non_trans_groups;
 
   /* No of transactional event group*/
-  volatile uint64 total_trans_groups;
+  Atomic_counter<uint64> total_trans_groups;
 
   /* domain-id based filter */
   Domain_id_filter domain_id_filter;

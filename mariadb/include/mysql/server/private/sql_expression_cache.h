@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111-1301 USA */
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335 USA */
 
 #ifndef SQL_EXPRESSION_CACHE_INCLUDED
 #define SQL_EXPRESSION_CACHE_INCLUDED
@@ -152,7 +152,7 @@ private:
   Item *val;
   /* hit/miss counters */
   ulong hit, miss;
-  /* Set on if the object has been succesfully initialized with init() */
+  /* Set on if the object has been successfully initialized with init() */
   bool inited;
 };
 

@@ -1,5 +1,6 @@
 /* -*- C++ -*- */
 /* Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
+   Copyright (c) 2009, 2020, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -12,7 +13,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #ifndef _SP_PCONTEXT_H_
 #define _SP_PCONTEXT_H_
@@ -22,7 +23,6 @@
 #endif
 
 #include "sql_string.h"                         // LEX_STRING
-#include "mysql_com.h"                          // enum_field_types
 #include "field.h"                              // Create_field
 #include "sql_array.h"                          // Dynamic_array
 
@@ -261,9 +261,8 @@ public:
   }
   bool eq_name(const LEX_CSTRING *str) const
   {
-    return my_strnncoll(system_charset_info,
-                        (const uchar *) name.str, name.length,
-                        (const uchar *) str->str, str->length) == 0;
+    return system_charset_info->strnncoll(name.str, name.length,
+                                          str->str, str->length) == 0;
   }
 };
 

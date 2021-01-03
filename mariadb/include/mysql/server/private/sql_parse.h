@@ -11,7 +11,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1335  USA */
 
 #ifndef SQL_PARSE_INCLUDED
 #define SQL_PARSE_INCLUDED
@@ -41,7 +41,7 @@ bool multi_update_precheck(THD *thd, TABLE_LIST *tables);
 bool multi_delete_precheck(THD *thd, TABLE_LIST *tables);
 int mysql_multi_update_prepare(THD *thd);
 int mysql_multi_delete_prepare(THD *thd);
-bool mysql_insert_select_prepare(THD *thd);
+int mysql_insert_select_prepare(THD *thd,select_result *sel_res);
 bool update_precheck(THD *thd, TABLE_LIST *tables);
 bool delete_precheck(THD *thd, TABLE_LIST *tables);
 bool insert_precheck(THD *thd, TABLE_LIST *tables);
@@ -99,10 +99,9 @@ void create_table_set_open_action_and_adjust_tables(LEX *lex);
 void mysql_init_multi_delete(LEX *lex);
 bool multi_delete_set_locks_and_link_aux_tables(LEX *lex);
 void create_table_set_open_action_and_adjust_tables(LEX *lex);
-pthread_handler_t handle_bootstrap(void *arg);
+int bootstrap(MYSQL_FILE *file);
 int mysql_execute_command(THD *thd);
 bool do_command(THD *thd);
-void do_handle_bootstrap(THD *thd);
 bool dispatch_command(enum enum_server_command command, THD *thd,
 		      char* packet, uint packet_length,
                       bool is_com_multi, bool is_next_command);
@@ -144,32 +143,32 @@ inline bool check_identifier_name(LEX_CSTRING *str)
 }
 
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
-bool check_one_table_access(THD *thd, ulong privilege, TABLE_LIST *tables);
-bool check_single_table_access(THD *thd, ulong privilege,
-			   TABLE_LIST *tables, bool no_errors);
-bool check_routine_access(THD *thd,ulong want_access,
+bool check_one_table_access(THD *thd, privilege_t privilege, TABLE_LIST *tables);
+bool check_single_table_access(THD *thd, privilege_t privilege,
+                               TABLE_LIST *tables, bool no_errors);
+bool check_routine_access(THD *thd, privilege_t want_access,
                           const LEX_CSTRING *db,
                           const LEX_CSTRING *name,
                           const Sp_handler *sph, bool no_errors);
-bool check_some_access(THD *thd, ulong want_access, TABLE_LIST *table);
+bool check_some_access(THD *thd, privilege_t want_access, TABLE_LIST *table);
 bool check_some_routine_access(THD *thd, const char *db, const char *name,
                                const Sp_handler *sph);
-bool check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
+bool check_table_access(THD *thd, privilege_t requirements,TABLE_LIST *tables,
                         bool any_combination_of_privileges_will_do,
                         uint number,
                         bool no_errors);
 #else
-inline bool check_one_table_access(THD *thd, ulong privilege, TABLE_LIST *tables)
+inline bool check_one_table_access(THD *thd, privilege_t privilege, TABLE_LIST *tables)
 { return false; }
-inline bool check_single_table_access(THD *thd, ulong privilege,
-			   TABLE_LIST *tables, bool no_errors)
+inline bool check_single_table_access(THD *thd, privilege_t privilege,
+                                      TABLE_LIST *tables, bool no_errors)
 { return false; }
-inline bool check_routine_access(THD *thd,ulong want_access,
+inline bool check_routine_access(THD *thd, privilege_t want_access,
                                  const LEX_CSTRING *db,
                                  const LEX_CSTRING *name,
                                  const Sp_handler *sph, bool no_errors)
 { return false; }
-inline bool check_some_access(THD *thd, ulong want_access, TABLE_LIST *table)
+inline bool check_some_access(THD *thd, privilege_t want_access, TABLE_LIST *table)
 {
   table->grant.privilege= want_access;
   return false;
@@ -179,7 +178,7 @@ inline bool check_some_routine_access(THD *thd, const char *db,
                                       const Sp_handler *sph)
 { return false; }
 inline bool
-check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
+check_table_access(THD *thd, privilege_t requirements,TABLE_LIST *tables,
                    bool any_combination_of_privileges_will_do,
                    uint number,
                    bool no_errors)

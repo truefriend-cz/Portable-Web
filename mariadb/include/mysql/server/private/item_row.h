@@ -15,7 +15,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 /**
   Row items used for comparing rows and IN operations on rows:
@@ -33,10 +33,11 @@
    Item which stores (x,y,...) and ROW(x,y,...).
    Note that this can be recursive: ((x,y),(z,t)) is a ROW of ROWs.
 */
-class Item_row: public Item,
+class Item_row: public Item_fixed_hybrid,
                 private Item_args,
                 private Used_tables_and_const_cache,
-                private With_subquery_cache
+                private With_subquery_cache,
+                private With_sum_func_cache
 {
   table_map not_null_tables_cache;
   /**
@@ -45,17 +46,25 @@ class Item_row: public Item,
   */
   bool with_null;
 public:
-  Item_row(THD *thd, List<Item> &list):
-  Item(thd), Item_args(thd, list), not_null_tables_cache(0), with_null(0)
+  Item_row(THD *thd, List<Item> &list)
+   :Item_fixed_hybrid(thd), Item_args(thd, list),
+    not_null_tables_cache(0), with_null(0)
   { }
-  Item_row(THD *thd, Item_row *row):
-    Item(thd), Item_args(thd, static_cast<Item_args*>(row)), Used_tables_and_const_cache(),
+  Item_row(THD *thd, Item_row *row)
+   :Item_fixed_hybrid(thd), Item_args(thd, static_cast<Item_args*>(row)),
+    Used_tables_and_const_cache(),
+    With_sum_func_cache(*row),
     not_null_tables_cache(0), with_null(0)
   { }
 
   bool with_subquery() const { DBUG_ASSERT(fixed); return m_with_subquery; }
   enum Type type() const { return ROW_ITEM; };
   const Type_handler *type_handler() const { return &type_handler_row; }
+  Field *create_tmp_field_ex(MEM_ROOT *root, TABLE *table, Tmp_field_src *src,
+                             const Tmp_field_param *param)
+  {
+    return NULL; // Check with Vicentiu why it's called for Item_row
+  }
   void illegal_method_call(const char *);
   bool is_null() { return null_value; }
   void make_send_field(THD *thd, Send_field *)
@@ -82,7 +91,7 @@ public:
     illegal_method_call((const char*)"val_decimal");
     return 0;
   };
-  bool get_date(MYSQL_TIME *ltime, ulonglong fuzzydate)
+  bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate)
   {
     illegal_method_call((const char*)"get_date");
     return true;
@@ -92,6 +101,8 @@ public:
   void cleanup();
   void split_sum_func(THD *thd, Ref_ptr_array ref_pointer_array,
                       List<Item> &fields, uint flags);
+  bool with_sum_func() const { return m_with_sum_func; }
+  With_sum_func_cache* get_with_sum_func_cache() { return this; }
   table_map used_tables() const { return used_tables_cache; };
   bool const_item() const { return const_item_cache; };
   void update_used_tables()
@@ -110,6 +121,7 @@ public:
   }
   Item *transform(THD *thd, Item_transformer transformer, uchar *arg);
   bool eval_not_null_tables(void *opt_arg);
+  bool find_not_null_fields(table_map allowed);
 
   uint cols() const { return arg_count; }
   Item* element_index(uint i) { return args[i]; }
@@ -132,6 +144,11 @@ public:
   bool excl_dep_on_grouping_fields(st_select_lex *sel)
   {
     return Item_args::excl_dep_on_grouping_fields(sel);
+  }
+
+  bool excl_dep_on_in_subq_left_part(Item_in_subselect *subq_pred)
+  {
+    return Item_args::excl_dep_on_in_subq_left_part(subq_pred);
   }
 
   bool check_vcol_func_processor(void *arg) {return FALSE; }

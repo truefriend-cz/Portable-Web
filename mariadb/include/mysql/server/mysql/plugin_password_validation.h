@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 /**
   @file
@@ -42,8 +42,8 @@ struct st_mariadb_password_validation
     Function provided by the plugin which should perform password validation
     and return 0 if the password has passed the validation.
   */
-  int (*validate_password)(MYSQL_CONST_LEX_STRING *username,
-                           MYSQL_CONST_LEX_STRING *password);
+  int (*validate_password)(const MYSQL_CONST_LEX_STRING *username,
+                           const MYSQL_CONST_LEX_STRING *password);
 };
 
 #ifdef __cplusplus

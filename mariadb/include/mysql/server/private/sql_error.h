@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA */
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #ifndef SQL_ERROR_H
 #define SQL_ERROR_H
@@ -307,16 +307,16 @@ protected:
   String m_cursor_name;
 
   Sql_condition_items()
-   :m_class_origin((const char*) NULL, 0, & my_charset_utf8_bin),
-    m_subclass_origin((const char*) NULL, 0, & my_charset_utf8_bin),
-    m_constraint_catalog((const char*) NULL, 0, & my_charset_utf8_bin),
-    m_constraint_schema((const char*) NULL, 0, & my_charset_utf8_bin),
-    m_constraint_name((const char*) NULL, 0, & my_charset_utf8_bin),
-    m_catalog_name((const char*) NULL, 0, & my_charset_utf8_bin),
-    m_schema_name((const char*) NULL, 0, & my_charset_utf8_bin),
-    m_table_name((const char*) NULL, 0, & my_charset_utf8_bin),
-    m_column_name((const char*) NULL, 0, & my_charset_utf8_bin),
-    m_cursor_name((const char*) NULL, 0, & my_charset_utf8_bin)
+   :m_class_origin((const char*) NULL, 0, & my_charset_utf8mb3_bin),
+    m_subclass_origin((const char*) NULL, 0, & my_charset_utf8mb3_bin),
+    m_constraint_catalog((const char*) NULL, 0, & my_charset_utf8mb3_bin),
+    m_constraint_schema((const char*) NULL, 0, & my_charset_utf8mb3_bin),
+    m_constraint_name((const char*) NULL, 0, & my_charset_utf8mb3_bin),
+    m_catalog_name((const char*) NULL, 0, & my_charset_utf8mb3_bin),
+    m_schema_name((const char*) NULL, 0, & my_charset_utf8mb3_bin),
+    m_table_name((const char*) NULL, 0, & my_charset_utf8mb3_bin),
+    m_column_name((const char*) NULL, 0, & my_charset_utf8mb3_bin),
+    m_cursor_name((const char*) NULL, 0, & my_charset_utf8mb3_bin)
   { }
 
   void clear()
@@ -814,10 +814,47 @@ private:
 extern char *err_conv(char *buff, uint to_length, const char *from,
                       uint from_length, CHARSET_INFO *from_cs);
 
-class ErrConv
+class ErrBuff
 {
 protected:
   mutable char err_buffer[MYSQL_ERRMSG_SIZE];
+public:
+  ErrBuff()
+  {
+    err_buffer[0]= '\0';
+  }
+  const char *ptr() const { return err_buffer; }
+  const char *set_longlong(const Longlong_hybrid &nr) const
+  {
+    return nr.is_unsigned() ? ullstr(nr.value(), err_buffer) :
+                              llstr(nr.value(), err_buffer);
+  }
+  const char *set_double(double nr) const
+  {
+    my_gcvt(nr, MY_GCVT_ARG_DOUBLE, sizeof(err_buffer), err_buffer, 0);
+    return err_buffer;
+  }
+  const char *set_decimal(const decimal_t *d) const
+  {
+    int len= sizeof(err_buffer);
+    decimal2string(d, err_buffer, &len, 0, 0, ' ');
+    return err_buffer;
+  }
+  const char *set_str(const char *str, size_t len, CHARSET_INFO *cs) const
+  {
+    DBUG_ASSERT(len < UINT_MAX32);
+    return err_conv(err_buffer, (uint) sizeof(err_buffer), str, (uint) len, cs);
+  }
+  const char *set_mysql_time(const MYSQL_TIME *ltime) const
+  {
+    my_TIME_to_str(ltime, err_buffer, AUTO_SEC_PART_DIGITS);
+    return err_buffer;
+  }
+};
+
+
+class ErrConv: public ErrBuff
+{
 public:
   ErrConv() {}
   virtual ~ErrConv() {}
@@ -838,20 +875,18 @@ public:
     : ErrConv(), str(s->ptr()), len(s->length()), cs(s->charset()) {}
   const char *ptr() const
   {
-    DBUG_ASSERT(len < UINT_MAX32);
-    return err_conv(err_buffer, (uint) sizeof(err_buffer), str, (uint) len, cs);
+    return set_str(str, len, cs);
   }
 };
 
 class ErrConvInteger : public ErrConv, public Longlong_hybrid
 {
 public:
-  ErrConvInteger(longlong num_arg, bool unsigned_flag= false) :
-    ErrConv(), Longlong_hybrid(num_arg, unsigned_flag) {}
+  ErrConvInteger(const Longlong_hybrid &nr)
+   : ErrConv(), Longlong_hybrid(nr) { }
   const char *ptr() const
   {
-    return m_unsigned ? ullstr(m_value, err_buffer) :
-                         llstr(m_value, err_buffer);
+    return set_longlong(static_cast<Longlong_hybrid>(*this));
   }
 };
 
@@ -862,8 +897,7 @@ public:
   ErrConvDouble(double num_arg) : ErrConv(), num(num_arg) {}
   const char *ptr() const
   {
-    my_gcvt(num, MY_GCVT_ARG_DOUBLE, sizeof(err_buffer), err_buffer, 0);
-    return err_buffer;
+    return set_double(num);
   }
 };
 
@@ -874,8 +908,7 @@ public:
   ErrConvTime(const MYSQL_TIME *ltime_arg) : ErrConv(), ltime(ltime_arg) {}
   const char *ptr() const
   {
-    my_TIME_to_str(ltime, err_buffer, AUTO_SEC_PART_DIGITS);
-    return err_buffer;
+    return set_mysql_time(ltime);
   }
 };
 
@@ -886,9 +919,7 @@ public:
   ErrConvDecimal(const decimal_t *d_arg) : ErrConv(), d(d_arg) {}
   const char *ptr() const
   {
-    int len= sizeof(err_buffer);
-    decimal2string(d, err_buffer, &len, 0, 0, ' ');
-    return err_buffer;
+    return set_decimal(d);
   }
 };
 
@@ -1229,6 +1260,7 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////
 
+void convert_error_to_warning(THD *thd);
 
 void push_warning(THD *thd, Sql_condition::enum_warning_level level,
                   uint code, const char *msg);

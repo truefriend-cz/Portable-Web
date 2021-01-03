@@ -11,7 +11,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1335  USA */
 
 #ifndef SQL_DELETE_INCLUDED
 #define SQL_DELETE_INCLUDED
@@ -26,8 +26,7 @@ class select_result;
 typedef class Item COND;
 template <typename T> class SQL_I_List;
 
-int mysql_prepare_delete(THD *thd, TABLE_LIST *table_list,
-                         uint wild_num, List<Item> &field_list, Item **conds,
+int mysql_prepare_delete(THD *thd, TABLE_LIST *table_list, Item **conds,
                          bool *delete_while_scanning);
 bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
                   SQL_I_List<ORDER> *order, ha_rows rows, 

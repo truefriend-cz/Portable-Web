@@ -1,5 +1,5 @@
 /* Copyright (c) 2000, 2010, Oracle and/or its affiliates. 
-   Copyright (C) 2000, 2017, MariaDB Corporation Ab
+   Copyright (C) 2000, 2019, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #ifndef _my_dbug_h
 #define _my_dbug_h
@@ -52,12 +52,17 @@ extern void _db_enter_(const char *_func_, const char *_file_, uint _line_,
 extern  void _db_return_(struct _db_stack_frame_ *_stack_frame_);
 extern  int _db_pargs_(uint _line_,const char *keyword);
 extern  void _db_doprnt_(const char *format,...)
-  ATTRIBUTE_FORMAT(printf, 1, 2);
+#ifdef WAITING_FOR_BUGFIX_TO_VSPRINTF
+  ATTRIBUTE_FORMAT(printf, 1, 2)
+#endif
+  ;
 extern  void _db_dump_(uint _line_,const char *keyword,
                        const unsigned char *memory, size_t length);
 extern  void _db_end_(void);
 extern  void _db_lock_file_(void);
 extern  void _db_unlock_file_(void);
+ATTRIBUTE_COLD
+extern  my_bool _db_my_assert(const char *file, int line, const char *msg);
 extern  FILE *_db_fp_(void);
 extern void _db_flush_(void);
 extern void dbug_swap_code_state(void **code_state_store);
@@ -65,6 +70,7 @@ extern void dbug_free_code_state(void **code_state_store);
 extern  const char* _db_get_func_(void);
 extern int (*dbug_sanity)(void);
 
+#ifdef DBUG_TRACE
 #define DBUG_LEAVE do { \
     _db_stack_frame_.line= __LINE__; \
     _db_return_ (&_db_stack_frame_); \
@@ -83,6 +89,13 @@ extern int (*dbug_sanity)(void);
 #define DBUG_VOID_RETURN do {DBUG_LEAVE; return;} while(0)
 #endif
 
+#else
+#define DBUG_LEAVE
+#define DBUG_ENTER(a)
+#define DBUG_RETURN(a1) return(a1)
+#define DBUG_VOID_RETURN return
+#endif
+
 #define DBUG_EXECUTE(keyword,a1) \
         do {if (_db_keyword_(0, (keyword), 0)) { a1 }} while(0)
 #define DBUG_EXECUTE_IF(keyword,a1) \
@@ -93,6 +106,9 @@ extern int (*dbug_sanity)(void);
         (_db_keyword_(0,(keyword), 1) ? (a1) : (a2))
 #define DBUG_PRINT(keyword,arglist) \
         do if (_db_pargs_(__LINE__,keyword)) _db_doprnt_ arglist; while(0)
+
+#define DBUG_PUSH_EMPTY if (_dbug_on_) { DBUG_PUSH(""); }
+#define DBUG_POP_EMPTY  if (_dbug_on_) { DBUG_POP(); }
 #define DBUG_PUSH(a1) _db_push_ (a1)
 #define DBUG_POP() _db_pop_ ()
 #define DBUG_SET(a1) _db_set_ (a1)
@@ -103,7 +119,9 @@ extern int (*dbug_sanity)(void);
 #define DBUG_END()  _db_end_ ()
 #define DBUG_LOCK_FILE _db_lock_file_()
 #define DBUG_UNLOCK_FILE _db_unlock_file_()
-#define DBUG_ASSERT(A) do { if (!(A)) { _db_flush_(); assert(A); }} while (0)
+#define DBUG_ASSERT(A) do { \
+  if (unlikely(!(A)) && _db_my_assert(__FILE__, __LINE__, #A)) assert(A); \
+} while (0)
 #define DBUG_SLOW_ASSERT(A) DBUG_ASSERT(A)
 #define DBUG_ASSERT_EXISTS
 #define DBUG_EXPLAIN(buf,len) _db_explain_(0, (buf),(len))
@@ -127,7 +145,7 @@ extern int (*dbug_sanity)(void);
 #define DBUG_ABORT() (_db_flush_(),\
                      (void)_CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE),\
                      (void)_CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR),\
-                     _exit(3))
+                     TerminateProcess(GetCurrentProcess(),3))
 #endif
 
 /*
@@ -157,6 +175,8 @@ extern void _db_suicide_(void);
 #define DBUG_EVALUATE(keyword,a1,a2) (a2)
 #define DBUG_EVALUATE_IF(keyword,a1,a2) (a2)
 #define DBUG_PRINT(keyword,arglist)     do { } while(0)
+#define DBUG_PUSH_EMPTY                 do { } while(0)
+#define DBUG_POP_EMPTY                  do { } while(0)
 #define DBUG_PUSH(a1)                   do { } while(0)
 #define DBUG_SET(a1)                    do { } while(0)
 #define DBUG_SET_INITIAL(a1)            do { } while(0)

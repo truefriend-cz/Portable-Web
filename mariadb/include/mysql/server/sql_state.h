@@ -94,7 +94,7 @@
 { ER_PRIMARY_CANT_HAVE_NULL               ,"42000", "" },
 { ER_TOO_MANY_ROWS                        ,"42000", "" },
 { ER_REQUIRES_PRIMARY_KEY                 ,"42000", "" },
-{ ER_KEY_DOES_NOT_EXITS                   ,"42000", "S1009" },
+{ ER_KEY_DOES_NOT_EXISTS                  ,"42000", "S1009" },
 { ER_CHECK_NO_SUCH_TABLE                  ,"42000", "" },
 { ER_CHECK_NOT_IMPLEMENTED                ,"42000", "" },
 { ER_CANT_DO_THIS_DURING_AN_TRANSACTION   ,"25000", "" },
@@ -252,3 +252,4 @@
 { ER_NOT_SEQUENCE2                        ,"42S02", "" },
 { ER_UNKNOWN_SEQUENCES                    ,"42S02", "" },
 { ER_UNKNOWN_VIEW                         ,"42S02", "" },
+{ ER_TOO_LONG_KEYPART                     ,"42000", "S1009" },

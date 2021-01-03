@@ -11,7 +11,7 @@
  
  You should have received a copy of the GNU General Public License
  along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
+ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1335  USA */
 
 #ifndef MY_CONFIG_H
 #define MY_CONFIG_H
@@ -21,7 +21,6 @@
 /* #undef _GNU_SOURCE */
 /* #undef HAVE_ALLOCA_H */
 /* #undef HAVE_ARPA_INET_H */
-/* #undef HAVE_ASM_MSR_H */
 /* #undef HAVE_ASM_TERMBITS_H */
 /* #undef HAVE_CRYPT_H */
 /* #undef HAVE_CURSES_H */
@@ -65,7 +64,6 @@
 /* #undef HAVE_SYS_FILE_H */
 /* #undef HAVE_SYS_FPU_H */
 /* #undef HAVE_SYS_IOCTL_H */
-/* #undef HAVE_SYS_IPC_H */
 /* #undef HAVE_SYS_MALLOC_H */
 /* #undef HAVE_SYS_MMAN_H */
 /* #undef HAVE_SYS_NDIR_H */
@@ -74,7 +72,6 @@
 /* #undef HAVE_SYS_PRCTL_H */
 /* #undef HAVE_SYS_RESOURCE_H */
 /* #undef HAVE_SYS_SELECT_H */
-/* #undef HAVE_SYS_SHM_H */
 /* #undef HAVE_SYS_SOCKET_H */
 /* #undef HAVE_SYS_SOCKIO_H */
 /* #undef HAVE_SYS_UTSNAME_H */
@@ -105,7 +102,6 @@
 /* Libraries */
 /* #undef HAVE_LIBWRAP */
 /* #undef HAVE_SYSTEMD */
-/* #undef HAVE_CRC32_VPMSUM */
 
 /* Does "struct timespec" have a "sec" and "nsec" field? */
 /* #undef HAVE_TIMESPEC_TS_SEC */
@@ -123,7 +119,6 @@
 /* Functions we may want to use. */
 /* #undef HAVE_ACCEPT4 */
 #define HAVE_ACCESS 1
-/* #undef HAVE_AIOWAIT */
 /* #undef HAVE_ALARM */
 #define HAVE_ALLOCA 1
 /* #undef HAVE_BFILL */
@@ -149,6 +144,7 @@
 /* #undef HAVE_GETHOSTBYADDR_R */
 /* #undef HAVE_GETHRTIME */
 /* #undef HAVE_GETPAGESIZE */
+/* #undef HAVE_GETPAGESIZES */
 /* #undef HAVE_GETPASS */
 /* #undef HAVE_GETPASSPHRASE */
 /* #undef HAVE_GETPWNAM */
@@ -161,14 +157,12 @@
 /* #undef gmtime_r */
 /* #undef HAVE_IN_ADDR_T */
 /* #undef HAVE_INITGROUPS */
-/* #undef HAVE_LARGE_PAGE_OPTION */
 #define HAVE_LDIV 1
 /* #undef HAVE_LRAND48 */
 #define HAVE_LOCALTIME_R 1
 /* #undef HAVE_LSTAT */
 /* #undef HAVE_MEMALIGN */
 /* #undef HAVE_MLOCK */
-/* #undef HAVE_NPTL */
 /* #undef HAVE_NL_LANGINFO */
 /* #undef HAVE_MADVISE */
 /* #undef HAVE_DECL_MADVISE */
@@ -184,12 +178,8 @@
 #define HAVE_PERROR 1
 /* #undef HAVE_POLL */
 /* #undef HAVE_POSIX_FALLOCATE */
-/* #undef HAVE_LINUX_FALLOC_H */
 /* #undef HAVE_FALLOC_PUNCH_HOLE_AND_KEEP_SIZE */
 /* #undef HAVE_PREAD */
-/* #undef HAVE_PAUSE_INSTRUCTION */
-/* #undef HAVE_FAKE_PAUSE_INSTRUCTION */
-/* #undef HAVE_RDTSCLL */
 /* #undef HAVE_READ_REAL_TIME */
 /* #undef HAVE_PTHREAD_ATTR_CREATE */
 /* #undef HAVE_PTHREAD_ATTR_GETGUARDSIZE */
@@ -197,6 +187,7 @@
 /* #undef HAVE_PTHREAD_ATTR_SETSCOPE */
 /* #undef HAVE_PTHREAD_ATTR_SETSTACKSIZE */
 /* #undef HAVE_PTHREAD_CONDATTR_CREATE */
+/* #undef HAVE_PTHREAD_GETAFFINITY_NP */
 /* #undef HAVE_PTHREAD_KEY_DELETE */
 /* #undef HAVE_PTHREAD_KILL */
 /* #undef HAVE_PTHREAD_RWLOCK_RDLOCK */
@@ -219,6 +210,7 @@
 /* #undef HAVE_SIGACTION */
 /* #undef HAVE_SIGTHREADMASK */
 /* #undef HAVE_SIGWAIT */
+/* #undef HAVE_SIGWAITINFO */
 /* #undef HAVE_SLEEP */
 #define HAVE_SNPRINTF 1
 /* #undef HAVE_STPCPY */
@@ -244,7 +236,6 @@
 /* Symbols we may use */
 /* #undef HAVE_SYS_ERRLIST */
 /* used by stacktrace functions */
-/* #undef HAVE_BSS_START */
 /* #undef HAVE_BACKTRACE */
 /* #undef HAVE_BACKTRACE_SYMBOLS */
 /* #undef HAVE_BACKTRACE_SYMBOLS_FD */
@@ -379,16 +370,13 @@
 
 /* #undef HAVE_SVR3_SIGNALS */
 /* #undef HAVE_V7_SIGNALS */
-/* #undef HAVE_ERR_remove_thread_state */
+#define HAVE_ERR_remove_thread_state 1
+#define HAVE_X509_check_host 1
 
 /* #undef HAVE_SOLARIS_STYLE_GETHOST */
 
-/* #undef HAVE_GCC_ATOMIC_BUILTINS */
 /* #undef HAVE_GCC_C11_ATOMICS */
 /* #undef HAVE_SOLARIS_ATOMIC */
-/* #undef HAVE_DECL_SHM_HUGETLB */
-/* #undef HAVE_LINUX_LARGE_PAGES */
-/* #undef HUGETLB_USE_PROC_MEMINFO */
 #define NO_FCNTL_NONBLOCK 1
 #define NO_ALARM 1
 
@@ -498,8 +486,7 @@
 #define HAVE_CHARSET_ucs2 1
 #define HAVE_CHARSET_ujis 1
 #define HAVE_CHARSET_utf8mb4 1
-/* #undef HAVE_CHARSET_utf8mb3 */
-#define HAVE_CHARSET_utf8 1
+#define HAVE_CHARSET_utf8mb3 1
 #define HAVE_CHARSET_utf16 1
 #define HAVE_CHARSET_utf32 1
 #define HAVE_UCA_COLLATIONS 1
@@ -525,30 +512,31 @@
 #define WITH_ARIA_STORAGE_ENGINE 1
 #define USE_ARIA_FOR_TMP_TABLES 1
 
-#define DEFAULT_MYSQL_HOME "C:/Program Files/MariaDB 10.3"
+#define DEFAULT_MYSQL_HOME "C:/Program Files/MariaDB 10.5"
 #define SHAREDIR "share"
-#define DEFAULT_BASEDIR "C:/Program Files/MariaDB 10.3"
-#define MYSQL_DATADIR "C:/Program Files/MariaDB 10.3/data"
-#define DEFAULT_CHARSET_HOME "C:/Program Files/MariaDB 10.3"
-#define PLUGINDIR "C:/Program Files/MariaDB 10.3/lib/plugin"
+#define DEFAULT_BASEDIR "C:/Program Files/MariaDB 10.5"
+#define MYSQL_DATADIR "C:/Program Files/MariaDB 10.5/data"
+#define DEFAULT_CHARSET_HOME "C:/Program Files/MariaDB 10.5"
+#define PLUGINDIR "C:/Program Files/MariaDB 10.5/lib/plugin"
 /* #undef DEFAULT_SYSCONFDIR */
 #define DEFAULT_TMPDIR P_tmpdir
 
 /* #undef SO_EXT */
 
 #define MYSQL_VERSION_MAJOR 10
-#define MYSQL_VERSION_MINOR 3
-#define MYSQL_VERSION_PATCH 14
+#define MYSQL_VERSION_MINOR 5
+#define MYSQL_VERSION_PATCH 8
 #define MYSQL_VERSION_EXTRA ""
 
 #define PACKAGE "mysql"
 #define PACKAGE_BUGREPORT ""
 #define PACKAGE_NAME "MySQL Server"
-#define PACKAGE_STRING "MySQL Server 10.3.14"
+#define PACKAGE_STRING "MySQL Server 10.5.8"
 #define PACKAGE_TARNAME "mysql"
-#define PACKAGE_VERSION "10.3.14"
-#define VERSION "10.3.14"
+#define PACKAGE_VERSION "10.5.8"
+#define VERSION "10.5.8"
 #define PROTOCOL_VERSION 10
+#define PCRE2_CODE_UNIT_WIDTH 8
 
 #define MALLOC_LIBRARY "system"
 

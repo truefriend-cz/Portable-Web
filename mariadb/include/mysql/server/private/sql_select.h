@@ -2,7 +2,7 @@
 #define SQL_SELECT_INCLUDED
 
 /* Copyright (c) 2000, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2008, 2017, MariaDB Corporation.
+   Copyright (c) 2008, 2020, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,7 +15,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 /**
   @file
@@ -225,6 +225,10 @@ Next_select_func setup_end_select_func(JOIN *join, JOIN_TAB *tab);
 int rr_sequential(READ_RECORD *info);
 int rr_sequential_and_unpack(READ_RECORD *info);
 Item *remove_pushed_top_conjuncts(THD *thd, Item *cond);
+Item *and_new_conditions_to_optimized_cond(THD *thd, Item *cond,
+                                           COND_EQUAL **cond_eq,
+                                           List<Item> &new_conds,
+                                           Item::cond_result *cond_value);
 
 #include "sql_explain.h"
 
@@ -243,13 +247,13 @@ class SplM_opt_info;
 typedef struct st_join_table {
   TABLE		*table;
   TABLE_LIST    *tab_list;
-  KEYUSE	*keyuse;			/**< pointer to first used key */
+  KEYUSE	*keyuse;       /**< pointer to first used key */
   KEY           *hj_key;       /**< descriptor of the used best hash join key
-				    not supported by any index                 */
+                                    not supported by any index               */
   SQL_SELECT	*select;
   COND		*select_cond;
   COND          *on_precond;    /**< part of on condition to check before
-				     accessing the first inner table           */  
+                                     accessing the first inner table         */
   QUICK_SELECT_I *quick;
   /* 
     The value of select_cond before we've attempted to do Index Condition
@@ -510,6 +514,18 @@ typedef struct st_join_table {
 
   bool preread_init_done;
 
+  /*
+    Cost info to the range filter used when joining this join table
+    (Defined when the best join order has been already chosen)
+  */
+  Range_rowid_filter_cost_info *range_rowid_filter_info;
+  /* Rowid filter to be used when joining this join table */
+  Rowid_filter *rowid_filter;
+  /* Becomes true just after the used range filter has been built / filled */
+  bool is_rowid_filter_built;
+
+  void build_range_rowid_filter_if_needed();
+
   void cleanup();
   inline bool is_using_loose_index_scan()
   {
@@ -619,6 +635,8 @@ typedef struct st_join_table {
   ha_rows get_examined_rows();
   bool preread_init();
 
+  bool pfs_batch_update(JOIN *join);
+
   bool is_sjm_nest() { return MY_TEST(bush_children); }
   
   /*
@@ -655,6 +673,8 @@ typedef struct st_join_table {
   bool use_order() const; ///< Use ordering provided by chosen index?
   bool sort_table();
   bool remove_duplicates();
+
+  void partial_cleanup();
   void add_keyuses_for_splitting();
   SplM_plan_info *choose_best_splitting(double record_count,
                                         table_map remaining_tables);
@@ -838,6 +858,7 @@ public:
   friend void best_access_path(JOIN      *join,
                                JOIN_TAB  *s,
                                table_map remaining_tables,
+                               const struct st_position *join_positions,
                                uint      idx,
                                bool      disable_jbuf,
                                double    record_count,
@@ -866,7 +887,7 @@ public:
   void set_empty()
   {
     sjm_scan_need_tables= 0;
-    LINT_INIT_STRUCT(sjm_scan_last_inner);
+    sjm_scan_last_inner= 0;
     is_used= FALSE;
   }
   void set_from_prev(struct st_position *prev);
@@ -883,6 +904,10 @@ public:
 
   friend void fix_semijoin_strategies_for_picked_join_order(JOIN *join);
 };
+
+
+class Range_rowid_filter_cost_info;
+class Rowid_filter;
 
 
 /**
@@ -967,6 +992,10 @@ typedef struct st_position
 
   /* Info on splitting plan used at this position */  
   SplM_plan_info *spl_plan;
+
+  /* Cost info for the range filter used at this position */
+  Range_rowid_filter_cost_info *range_rowid_filter_info;
+
 } POSITION;
 
 typedef Bounds_checked_array<Item_null_result*> Item_null_array;
@@ -1070,7 +1099,7 @@ protected:
       keyuse.buffer= NULL;
       keyuse.malloc_flags= 0;
       best_positions= 0;                        /* To detect errors */
-      error= my_multi_malloc(MYF(MY_WME),
+      error= my_multi_malloc(PSI_INSTRUMENT_ME, MYF(MY_WME),
                              &best_positions,
                              sizeof(*best_positions) * (tables + 1),
                              &join_tab_keyuse,
@@ -1102,6 +1131,7 @@ protected:
                                Join_plan_state *save_to);
   /* Choose a subquery plan for a table-less subquery. */
   bool choose_tableless_subquery_plan();
+  void handle_implicit_grouping_with_window_funcs();
 
 public:
   void save_query_plan(Join_plan_state *save_to);
@@ -1477,6 +1507,11 @@ public:
   Dynamic_array<KEYUSE_EXT> *ext_keyuses_for_splitting;
 
   JOIN_TAB *sort_and_group_aggr_tab;
+  /*
+    Flag is set to true if select_lex was found to be degenerated before
+    the optimize_cond() call in JOIN::optimize_inner() method.
+  */
+  bool is_orig_degenerated;
 
   JOIN(THD *thd_arg, List<Item> &fields_arg, ulonglong select_options_arg,
        select_result *result_arg)
@@ -1572,6 +1607,7 @@ public:
     emb_sjm_nest= NULL;
     sjm_lookup_tables= 0;
     sjm_scan_tables= 0;
+    is_orig_degenerated= false;
   }
 
   /* True if the plan guarantees that it will be returned zero or one row */
@@ -1588,10 +1624,9 @@ public:
     return exec_join_tab_cnt() + aggr_tables - 1;
   }
 
-  int prepare(TABLE_LIST *tables, uint wind_num,
-	      COND *conds, uint og_num, ORDER *order, bool skip_order_by,
-              ORDER *group, Item *having, ORDER *proc_param, SELECT_LEX *select,
-	      SELECT_LEX_UNIT *unit);
+  int prepare(TABLE_LIST *tables, COND *conds, uint og_num, ORDER *order,
+              bool skip_order_by, ORDER *group, Item *having,
+              ORDER *proc_param, SELECT_LEX *select, SELECT_LEX_UNIT *unit);
   bool prepare_stage2();
   int optimize();
   int optimize_inner();
@@ -1609,7 +1644,8 @@ public:
   bool flatten_subqueries();
   bool optimize_unflattened_subqueries();
   bool optimize_constant_subqueries();
-  int init_join_caches();
+  bool make_range_rowid_filters();
+  bool init_range_rowid_filters();
   bool make_sum_func_list(List<Item> &all_fields, List<Item> &send_fields,
 			  bool before_group_by, bool recompute= FALSE);
 
@@ -1631,6 +1667,9 @@ public:
   void copy_ref_ptr_array(Ref_ptr_array dst_arr, Ref_ptr_array src_arr)
   {
     DBUG_ASSERT(dst_arr.size() >= src_arr.size());
+    if (src_arr.size() == 0)
+      return;
+
     void *dest= dst_arr.array();
     const void *src= src_arr.array();
     memcpy(dest, src, src_arr.size() * src_arr.element_size());
@@ -1710,6 +1749,7 @@ public:
     - We are using an ORDER BY or GROUP BY on fields not in the first table
     - We are using different ORDER BY and GROUP BY orders
     - The user wants us to buffer the result.
+    - We are using WINDOW functions.
     When the WITH ROLLUP modifier is present, we cannot skip temporary table
     creation for the DISTINCT clause just because there are only const tables.
   */
@@ -1719,7 +1759,8 @@ public:
 	    ((select_distinct || !simple_order || !simple_group) ||
 	     (group_list && order) ||
              MY_TEST(select_options & OPTION_BUFFER_RESULT))) ||
-            (rollup.state != ROLLUP::STATE_NONE && select_distinct));
+            (rollup.state != ROLLUP::STATE_NONE && select_distinct) ||
+            select_lex->have_window_funcs());
   }
   bool choose_subquery_plan(table_map join_tables);
   void get_partial_cost_and_fanout(int end_tab_idx,
@@ -1749,6 +1790,7 @@ public:
   void add_keyuses_for_splitting();
   bool inject_best_splitting_cond(table_map remaining_tables);
   bool fix_all_splittings_in_plan();
+  void make_notnull_conds_for_range_scans();
 
   bool transform_in_predicates_into_in_subq(THD *thd);
 private:
@@ -1785,6 +1827,7 @@ private:
   bool add_having_as_table_cond(JOIN_TAB *tab);
   bool make_aggr_tables_info();
   bool add_fields_for_current_rowid(JOIN_TAB *cur, List<Item> *fields);
+  void init_join_cache_and_keyread();
 };
 
 enum enum_with_bush_roots { WITH_BUSH_ROOTS, WITHOUT_BUSH_ROOTS};
@@ -1815,10 +1858,6 @@ bool setup_copy_fields(THD *thd, TMP_TABLE_PARAM *param,
 void copy_fields(TMP_TABLE_PARAM *param);
 bool copy_funcs(Item **func_ptr, const THD *thd);
 uint find_shortest_key(TABLE *table, const key_map *usable_keys);
-Field* create_tmp_field_from_field(THD *thd, Field* org_field,
-                                   LEX_CSTRING *name, TABLE *table,
-                                   Item_field *item);
-
 bool is_indexed_agg_distinct(JOIN *join, List<Item_field> *out_args);
 
 /* functions from opt_sum.cc */
@@ -2043,6 +2082,11 @@ protected:
   }
 };
 
+void best_access_path(JOIN *join, JOIN_TAB *s,
+                      table_map remaining_tables,
+                      const POSITION *join_positions, uint idx,
+                      bool disable_jbuf, double record_count,
+                      POSITION *pos, POSITION *loose_scan_pos);
 bool cp_buffer_from_ref(THD *thd, TABLE *table, TABLE_REF *ref);
 bool error_if_full_join(JOIN *join);
 int report_error(TABLE *table, int error);
@@ -2061,8 +2105,7 @@ int join_read_key2(THD *thd, struct st_join_table *tab, TABLE *table,
 
 bool handle_select(THD *thd, LEX *lex, select_result *result,
                    ulong setup_tables_done_option);
-bool mysql_select(THD *thd,
-                  TABLE_LIST *tables, uint wild_num,  List<Item> &list,
+bool mysql_select(THD *thd, TABLE_LIST *tables, List<Item> &list,
                   COND *conds, uint og_num, ORDER *order, ORDER *group,
                   Item *having, ORDER *proc_param, ulonglong select_type, 
                   select_result *result, SELECT_LEX_UNIT *unit, 
@@ -2070,12 +2113,6 @@ bool mysql_select(THD *thd,
 void free_underlaid_joins(THD *thd, SELECT_LEX *select);
 bool mysql_explain_union(THD *thd, SELECT_LEX_UNIT *unit,
                          select_result *result);
-Field *create_tmp_field(THD *thd, TABLE *table,Item *item, Item::Type type,
-			Item ***copy_func, Field **from_field,
-                        Field **def_field,
-			bool group, bool modify_item,
-			bool table_cant_handle_bit_fields,
-                        bool make_copy_field);
 
 /*
   General routine to change field->ptr of a NULL-terminated array of Field
@@ -2343,7 +2380,7 @@ Item_equal *find_item_equal(COND_EQUAL *cond_equal, Field *field,
 extern bool test_if_ref(Item *, 
                  Item_field *left_item,Item *right_item);
 
-inline bool optimizer_flag(THD *thd, uint flag)
+inline bool optimizer_flag(THD *thd, ulonglong flag)
 { 
   return (thd->variables.optimizer_switch & flag);
 }
@@ -2397,6 +2434,12 @@ TABLE *create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
 			ulonglong select_options, ha_rows rows_limit,
                         const LEX_CSTRING *alias, bool do_not_open=FALSE,
                         bool keep_row_order= FALSE);
+TABLE *create_tmp_table_for_schema(THD *thd, TMP_TABLE_PARAM *param,
+                                   const ST_SCHEMA_TABLE &schema_table,
+                                   longlong select_options,
+                                   const LEX_CSTRING &alias,
+                                   bool do_not_open, bool keep_row_order);
+
 void free_tmp_table(THD *thd, TABLE *entry);
 bool create_internal_tmp_table_from_heap(THD *thd, TABLE *table,
                                          TMP_ENGINE_COLUMNDEF *start_recinfo,
@@ -2413,7 +2456,7 @@ bool instantiate_tmp_table(TABLE *table, KEY *keyinfo,
                            ulonglong options);
 bool open_tmp_table(TABLE *table);
 void setup_tmp_table_column_bitmaps(TABLE *table, uchar *bitmaps);
-double prev_record_reads(POSITION *positions, uint idx, table_map found_ref);
+double prev_record_reads(const POSITION *positions, uint idx, table_map found_ref);
 void fix_list_after_tbl_changes(SELECT_LEX *new_parent, List<TABLE_LIST> *tlist);
 double get_tmp_table_lookup_cost(THD *thd, double row_count, uint row_size);
 double get_tmp_table_write_cost(THD *thd, double row_count, uint row_size);
@@ -2449,8 +2492,29 @@ public:
   ~Pushdown_query() { delete handler; }
 
   /* Function that calls the above scan functions */
-  int execute(JOIN *join);
+  int execute(JOIN *);
 };
+
+class derived_handler;
+
+class Pushdown_derived: public Sql_alloc
+{
+private:
+  bool is_analyze;
+public:
+  TABLE_LIST *derived;
+  derived_handler *handler;
+
+  Pushdown_derived(TABLE_LIST *tbl, derived_handler *h);
+
+  ~Pushdown_derived();
+
+  int execute(); 
+};
+
+
+class select_handler;
+
 
 bool test_if_order_compatible(SQL_I_List<ORDER> &a, SQL_I_List<ORDER> &b);
 int test_if_group_changed(List<Cached_item> &list);
@@ -2458,5 +2522,14 @@ int create_sort_index(THD *thd, JOIN *join, JOIN_TAB *tab, Filesort *fsort);
 
 JOIN_TAB *first_explain_order_tab(JOIN* join);
 JOIN_TAB *next_explain_order_tab(JOIN* join, JOIN_TAB* tab);
+
+bool check_simple_equality(THD *thd, const Item::Context &ctx,
+                           Item *left_item, Item *right_item,
+                           COND_EQUAL *cond_equal);
+
+void propagate_new_equalities(THD *thd, Item *cond,
+                              List<Item_equal> *new_equalities,
+                              COND_EQUAL *inherited,
+                              bool *is_simplifiable_cond);
 
 #endif /* SQL_SELECT_INCLUDED */

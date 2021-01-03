@@ -16,7 +16,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #include <mysqld_error.h>
 
@@ -231,7 +231,7 @@ public:
   static bool check_n_load(THD *thd, const LEX_CSTRING *db, const LEX_CSTRING *table_name,
                            TABLE *table, bool names_only);
   static bool drop_all_triggers(THD *thd, const LEX_CSTRING *db,
-                                const LEX_CSTRING *table_name);
+                                const LEX_CSTRING *table_name, myf MyFlags);
   static bool change_table_name(THD *thd, const LEX_CSTRING *db,
                                 const LEX_CSTRING *old_alias,
                                 const LEX_CSTRING *old_table,
@@ -278,7 +278,7 @@ public:
   Field **nullable_fields() { return record0_field; }
   void reset_extra_null_bitmap()
   {
-    size_t null_bytes= (trigger_table->s->stored_fields -
+    size_t null_bytes= (trigger_table->s->fields -
                         trigger_table->s->null_fields + 7)/8;
     bzero(extra_null_bitmap, null_bytes);
   }

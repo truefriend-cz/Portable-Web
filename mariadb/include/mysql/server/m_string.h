@@ -1,5 +1,6 @@
 /*
    Copyright (c) 2000, 2012, Oracle and/or its affiliates.
+   Copyright (c) 2019, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -12,7 +13,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 /* There may be problems included in all of these. Try to test in
    configure which ones are needed? */
@@ -99,7 +100,7 @@ extern	char *strmake(char *dst,const char *src,size_t length);
 #define strmake_buf(D,S)        strmake(D, S, sizeof(D) - 1)
 #else
 #define strmake_buf(D,S) ({                             \
-  typeof (D) __x __attribute__((unused)) = { 2 };       \
+  __typeof__ (D) __x __attribute__((unused)) = { 2 };   \
   strmake(D, S, sizeof(D) - 1);                         \
   })
 #endif

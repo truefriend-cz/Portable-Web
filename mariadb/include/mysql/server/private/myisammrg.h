@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 /* This file should be included when using merge_isam_funktions */
 
@@ -106,7 +106,7 @@ extern int myrg_rrnd(MYRG_INFO *file,uchar *buf,ulonglong pos);
 extern int myrg_rsame(MYRG_INFO *file,uchar *record,int inx);
 extern int myrg_update(MYRG_INFO *file,const uchar *old,
                        const uchar *new_rec);
-extern int myrg_write(MYRG_INFO *info,uchar *rec);
+extern int myrg_write(MYRG_INFO *info,const uchar *rec);
 extern int myrg_status(MYRG_INFO *file,MYMERGE_INFO *x,int flag);
 extern int myrg_lock_database(MYRG_INFO *file,int lock_type);
 extern int myrg_create(const char *name, const char **table_names,
@@ -116,7 +116,9 @@ extern int myrg_extra(MYRG_INFO *file,enum ha_extra_function function,
 extern int myrg_reset(MYRG_INFO *info);
 extern void myrg_extrafunc(MYRG_INFO *info,invalidator_by_filename inv);
 extern ha_rows myrg_records_in_range(MYRG_INFO *info, int inx,
-                                     key_range *min_key, key_range *max_key);
+                                     const key_range *min_key,
+                                     const key_range *max_key,
+                                     page_range *pages);
 extern ha_rows myrg_records(MYRG_INFO *info);
 
 extern ulonglong myrg_position(MYRG_INFO *info);

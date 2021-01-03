@@ -153,3 +153,35 @@ $cfg['SaveDir'] = '';
  * You can find more configuration options in the documentation
  * in the doc/ folder or at <https://docs.phpmyadmin.net/>.
  */
+
+/* My */
+$cfg['Servers'][$i]['DisableIS'] = true;
+$cfg['PmaNoRelation_DisableWarning'] = true;
+$cfg['FontSize'] = '75%';
+$cfg['NavigationDisplayLogo'] = false;
+$cfg['Servers'][$i]['hide_db'] = 'performance_schema|information_schema|mysql|phpmyadmin|sys';
+$cfg['ExecTimeLimit'] = 0;
+$cfg['NavigationTreeEnableGrouping'] = false;
+
+$cfg['DefaultCharset'] = 'utf8';
+$cfg['DefaultConnectionCollation'] = 'utf8_general_ci';
+
+$cfg['VersionCheck'] = false;
+$cfg['ShowServerInfo'] = false;
+//$cfg['PmaNoRelation_DisableWarning'] = true; /*optional hide warning if disabling [$i][userconfig] below */
+$cfg['ThemeManager'] = false; /* hide dropdown select to change theme */
+//$cfg['ShowStats'] = false; /* hide stats */
+$cfg['ShowServerInfo'] = false; /* hide server details */
+$cfg['ShowPhpInfo'] = false; /* hide more server details */
+//$cfg['ShowChgPassword'] = false; /* hide password changing form */
+//$cfg['ShowCreateDb'] = false; /* hide creation of databases form */
+$cfg['ShowGitRevision'] = false; /* hide more version details */
+$cfg['MaxRows'] = 100;
+$cfg['ShowAll'] = TRUE;
+
+$cfg['MaxTableList'] = 250; // # of table names displayed in right panel
+$cfg['LeftDisplayLogo'] = FALSE;  // removes phpMyAdmin Logo from left corner
+$cfg['LightTabs'] = TRUE; // enables graphically less intense tabs
+$cfg['TextareaCols'] = 40; // sets SQL query textarea number of columns
+$cfg['TextareaRows'] = 15; // sets SQL query textarea number of rows
+$cfg['TextareaAutoSelect'] = FALSE; //disables auto select all in SQL textarea

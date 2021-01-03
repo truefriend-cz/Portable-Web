@@ -29,17 +29,23 @@
 class Unique :public Sql_alloc
 {
   DYNAMIC_ARRAY file_ptrs;
-  ulong max_elements;
+  ulong max_elements;   /* Total number of elements that will be stored in-memory */
   size_t max_in_memory_size;
   IO_CACHE file;
   TREE tree;
+ /* Number of elements filtered out due to min_dupl_count when storing results
+    to table. See Unique::get */
   ulong filtered_out_elems;
   uint size;
-  uint full_size;
-  uint min_dupl_count;   /* always 0 for unions, > 0 for intersections */
+
+  uint full_size;   /* Size of element + space needed to store the number of
+                       duplicates found for the element. */
+  uint min_dupl_count;   /* Minimum number of occurences of element required for
+                            it to be written to record_pointers.
+                            always 0 for unions, > 0 for intersections */
   bool with_counters;
 
-  bool merge(TABLE *table, uchar *buff, bool without_last_merge);
+  bool merge(TABLE *table, uchar *buff, size_t size, bool without_last_merge);
   bool flush();
 
 public:
@@ -66,19 +72,23 @@ public:
   bool get(TABLE *table);
   
   /* Cost of searching for an element in the tree */
-  inline static double get_search_cost(ulonglong tree_elems, uint compare_factor)
+  inline static double get_search_cost(ulonglong tree_elems,
+                                       double compare_factor)
   {
     return log((double) tree_elems) / (compare_factor * M_LN2);
   }  
 
   static double get_use_cost(uint *buffer, size_t nkeys, uint key_size,
-                             size_t max_in_memory_size, uint compare_factor,
+                             size_t max_in_memory_size, double compare_factor,
                              bool intersect_fl, bool *in_memory);
   inline static int get_cost_calc_buff_size(size_t nkeys, uint key_size,
                                             size_t max_in_memory_size)
   {
     size_t max_elems_in_tree=
       max_in_memory_size / ALIGN_SIZE(sizeof(TREE_ELEMENT)+key_size);
+
+    if (max_elems_in_tree == 0)
+      max_elems_in_tree= 1;
     return (int) (sizeof(uint)*(1 + nkeys/max_elems_in_tree));
   }
 

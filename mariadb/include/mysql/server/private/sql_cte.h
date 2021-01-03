@@ -111,7 +111,8 @@ public:
     inherited from the query that specified the table. Otherwise the list is
     always empty.
   */
-  List <LEX_CSTRING> column_list;
+  List <Lex_ident_sys> column_list;
+  List <Lex_ident_sys> *cycle_list;
   /* The query that specifies the table introduced by this with element */
   st_select_lex_unit *spec;
   /* 
@@ -163,13 +164,13 @@ public:
   SQL_I_List<TABLE_LIST> derived_with_rec_ref;
 
   With_element(LEX_CSTRING *name,
-               List <LEX_CSTRING> list,
+               List <Lex_ident_sys> list,
                st_select_lex_unit *unit)
     : next(NULL), base_dep_map(0), derived_dep_map(0),
       sq_dep_map(0), work_dep_map(0), mutually_recursive(0),
       top_level_dep_map(0), sq_rec_ref(NULL),
       next_mutually_recursive(NULL), references(0), 
-      query_name(name), column_list(list), spec(unit),
+      query_name(name), column_list(list), cycle_list(0), spec(unit),
       is_recursive(false), rec_outer_references(0), with_anchor(false),
       level(0), rec_result(NULL)
   { unit->with_element= this; }
@@ -197,7 +198,7 @@ public:
 
   TABLE_LIST *find_first_sq_rec_ref_in_select(st_select_lex *sel);
 
-  bool set_unparsed_spec(THD *thd, char *spec_start, char *spec_end,
+  bool set_unparsed_spec(THD *thd, const char *spec_start, const char *spec_end,
                          my_ptrdiff_t spec_offset);
 
   st_select_lex_unit *clone_parsed_spec(THD *thd, TABLE_LIST *with_table);
@@ -206,7 +207,7 @@ public:
 
   void inc_references() { references++; }
 
-  bool rename_columns_of_derived_unit(THD *thd, st_select_lex_unit *unit);
+  bool process_columns_of_derived_unit(THD *thd, st_select_lex_unit *unit);
 
   bool prepare_unreferenced(THD *thd);
 
@@ -214,7 +215,7 @@ public:
                                     table_map &unrestricted,
                                     table_map &encountered);
 
-  void print(String *str, enum_query_type query_type);
+  void print(THD *thd, String *str, enum_query_type query_type);
 
   With_clause *get_owner() { return owner; }
 
@@ -259,6 +260,8 @@ public:
 
   void prepare_for_next_iteration();
 
+  void set_cycle_list(List<Lex_ident_sys> *cycle_list_arg);
+
   friend class With_clause;
 };
 
@@ -292,8 +295,7 @@ private:
   */
   With_clause *next_with_clause;
   /* Set to true if dependencies between with elements have been checked */
-  bool dependencies_are_checked; 
-
+  bool dependencies_are_checked;
   /* 
     The bitmap of all recursive with elements whose specifications
     are not complied with restrictions imposed by the SQL standards
@@ -317,9 +319,8 @@ public:
   bool with_recursive;
 
   With_clause(bool recursive_fl, With_clause *emb_with_clause)
-    : owner(NULL),
-      embedding_with_clause(emb_with_clause), next_with_clause(NULL),
-      dependencies_are_checked(false),  unrestricted(0),
+    : owner(NULL), embedding_with_clause(emb_with_clause),
+      next_with_clause(NULL), dependencies_are_checked(false), unrestricted(0),
       with_prepared_anchor(0), cleaned(0), stabilized(0),
       with_recursive(recursive_fl)
   { }
@@ -333,7 +334,11 @@ public:
     last_next= &this->next_with_clause;
   }
 
+  st_select_lex_unit *get_owner() { return owner; }
+
   void set_owner(st_select_lex_unit *unit) { owner= unit; }
+
+  void attach_to(st_select_lex *select_lex);
 
   With_clause *pop() { return embedding_with_clause; }
       
@@ -351,7 +356,7 @@ public:
 
   void add_unrestricted(table_map map) { unrestricted|= map; }
 
-  void print(String *str, enum_query_type query_type);
+  void print(THD *thd, String *str, enum_query_type query_type);
 
   friend class With_element;
 
@@ -367,7 +372,6 @@ bool With_element::is_unrestricted()
 }
 
 inline
-
 bool With_element::is_with_prepared_anchor() 
 {
   return owner->with_prepared_anchor & get_elem_map();
@@ -449,11 +453,14 @@ void With_element::prepare_for_next_iteration()
 
 
 inline
-void  st_select_lex_unit::set_with_clause(With_clause *with_cl)
-{ 
-    with_clause= with_cl;
-    if (with_clause)
-      with_clause->set_owner(this);
+void With_clause::attach_to(st_select_lex *select_lex)
+{
+  for (With_element *with_elem= with_list.first;
+       with_elem;
+       with_elem= with_elem->next)
+  {
+    select_lex->register_unit(with_elem->spec, NULL);
+  }
 }
 
 

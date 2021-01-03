@@ -13,7 +13,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 /**
   @addtogroup Event_Scheduler
@@ -30,6 +30,8 @@ class THD;
 class Time_zone;
 struct TABLE;
 
+void init_scheduler_psi_keys(void);
+
 class Event_queue_element_for_exec
 {
 public:
@@ -37,7 +39,7 @@ public:
   ~Event_queue_element_for_exec();
 
   bool
-  init(const LEX_CSTRING *dbname, const LEX_CSTRING *name);
+  init(const LEX_CSTRING &dbname, const LEX_CSTRING &name);
 
   LEX_CSTRING dbname;
   LEX_CSTRING name;
@@ -48,6 +50,15 @@ private:
   /* Prevent use of these */
   Event_queue_element_for_exec(const Event_queue_element_for_exec &);
   void operator=(Event_queue_element_for_exec &);
+#ifdef HAVE_PSI_INTERFACE
+public:
+  PSI_statement_info* get_psi_info()
+  {
+    return & psi_info;
+  }
+
+  static PSI_statement_info psi_info;
+#endif
 };
 
 

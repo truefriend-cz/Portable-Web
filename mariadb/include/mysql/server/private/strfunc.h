@@ -11,14 +11,15 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1335  USA */
 
 #ifndef STRFUNC_INCLUDED
 #define STRFUNC_INCLUDED
 
 typedef struct st_typelib TYPELIB;
 
-ulonglong find_set(TYPELIB *lib, const char *x, size_t length, CHARSET_INFO *cs,
+ulonglong find_set(const TYPELIB *lib,
+                   const char *x, size_t length, CHARSET_INFO *cs,
 		   char **err_pos, uint *err_len, bool *set_warning);
 ulonglong find_set_from_flags(TYPELIB *lib, uint default_name,
                               ulonglong cur_set, ulonglong default_set,

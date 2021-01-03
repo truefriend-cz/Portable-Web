@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335 USA */
+   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335 USA */
 
 
 /* This file includes constants used with all databases */
@@ -53,7 +53,11 @@
   Allow opening even if table is incompatible as this is for ALTER TABLE which
   will fix the table structure.
 */
-#define HA_OPEN_FOR_ALTER		4096U
+#define HA_OPEN_FOR_ALTER		8192U
+
+/* Open table for FLUSH */
+#define HA_OPEN_FOR_FLUSH               8192U
+
 
 /* The following is parameter to ha_rkey() how to use key */
 
@@ -99,7 +103,8 @@ enum ha_key_alg {
   HA_KEY_ALG_BTREE=	1,		/* B-tree, default one          */
   HA_KEY_ALG_RTREE=	2,		/* R-tree, for spatial searches */
   HA_KEY_ALG_HASH=	3,		/* HASH keys (HEAP tables) */
-  HA_KEY_ALG_FULLTEXT=	4		/* FULLTEXT (MyISAM tables) */
+  HA_KEY_ALG_FULLTEXT=	4,		/* FULLTEXT (MyISAM tables) */
+  HA_KEY_ALG_LONG_HASH= 5		/* long BLOB keys */
 };
 
         /* Storage media types */ 
@@ -614,7 +619,6 @@ enum data_file_type {
 #define EQ_RANGE	32U
 #define NULL_RANGE	64U
 #define GEOM_FLAG      128U
-#define SKIP_RANGE     256U
 
 typedef struct st_key_range
 {
@@ -631,9 +635,26 @@ typedef struct st_key_multi_range
   key_range start_key;
   key_range end_key;
   range_id_t ptr;                 /* Free to use by caller (ptr to row etc) */
-  uint  range_flag;           /* key range flags see above */
+  /*
+    A set of range flags that describe both endpoints: UNIQUE_RANGE,
+    NULL_RANGE, EQ_RANGE, GEOM_FLAG.
+    (Flags that describe one endpoint, NO_{MIN|MAX}_RANGE, NEAR_{MIN|MAX} will
+     not be set here)
+  */
+  uint  range_flag;
 } KEY_MULTI_RANGE;
 
+
+/* Store first and last leaf page accessed by records_in_range */
+
+typedef struct st_page_range
+{
+  ulonglong first_page;
+  ulonglong last_page;
+} page_range;
+
+#define UNUSED_PAGE_NO ULONGLONG_MAX
+#define unused_page_range { UNUSED_PAGE_NO, UNUSED_PAGE_NO }
 
 /* For number of records */
 #ifdef BIG_TABLES
@@ -646,6 +667,7 @@ typedef ulong		ha_rows;
 
 #define HA_POS_ERROR	(~ (ha_rows) 0)
 #define HA_OFFSET_ERROR	(~ (my_off_t) 0)
+#define HA_ROWS_MAX        HA_POS_ERROR
 
 #if SIZEOF_OFF_T == 4
 #define MAX_FILE_SIZE	INT_MAX32

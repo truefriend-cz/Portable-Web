@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111-1301 USA */
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335 USA */
 
 /*
 
@@ -211,6 +211,7 @@ public:
     select_lex(NULL),
 #endif
     linkage(UNSPECIFIED_TYPE),
+    is_lateral(false),
     message(NULL),
     having(NULL), having_value(Item::COND_UNDEF),
     using_temporary(false), using_filesort(false),
@@ -226,6 +227,7 @@ public:
 #endif
   const char *select_type;
   enum sub_select_type linkage;
+  bool is_lateral;
 
   /*
     If message != NULL, this is a degenerate join plan, and all subsequent
@@ -236,6 +238,7 @@ public:
   /* Expensive constant condition */
   Item *exec_const_cond;
   Item *outer_ref_cond;
+  Item *pseudo_bits_cond;
 
   /* HAVING condition */
   Item *having;
@@ -328,6 +331,8 @@ public:
 /////////////////////////////////////////////////////////////////////////////
 
 extern const char *unit_operation_text[4];
+extern const char *pushed_derived_text;
+extern const char *pushed_select_text;
 
 /*
   Explain structure for a UNION.
@@ -339,7 +344,7 @@ class Explain_union : public Explain_node
 {
 public:
   Explain_union(MEM_ROOT *root, bool is_analyze) : 
-    Explain_node(root),
+    Explain_node(root), union_members(PSI_INSTRUMENT_MEM),
     is_recursive_cte(false),
     fake_select_lex_explain(root, is_analyze)
   {}
@@ -583,6 +588,8 @@ class Explain_index_use : public Sql_alloc
 {
   char *key_name;
   uint key_len;
+  char *filter_name;
+  uint filter_len;
 public:
   String_list key_parts_list;
   
@@ -595,12 +602,46 @@ public:
   {
     key_name= NULL;
     key_len= (uint)-1;
+    filter_name= NULL;
+    filter_len= (uint)-1;
   }
   bool set(MEM_ROOT *root, KEY *key_name, uint key_len_arg);
   bool set_pseudo_key(MEM_ROOT *root, const char *key_name);
 
   inline const char *get_key_name() const { return key_name; }
   inline uint get_key_len() const { return key_len; }
+  //inline const char *get_filter_name() const { return filter_name; }
+};
+
+
+/*
+  Query Plan data structure for Rowid filter.
+*/
+class Explain_rowid_filter : public Sql_alloc
+{
+public:
+  /* Quick select used to collect the rowids into filter */
+  Explain_quick_select *quick;
+
+  /* How many rows the above quick select is expected to return */
+  ha_rows rows;
+
+  /* Expected selectivity for the filter */
+  double selectivity;
+
+  /* Tracker with the information about how rowid filter is executed */
+  Rowid_filter_tracker *tracker;
+
+  void print_explain_json(Explain_query *query, Json_writer *writer,
+                          bool is_analyze);
+
+  /*
+    TODO:
+      Here should be ANALYZE members:
+      - r_rows for the quick select
+      - An object that tracked the table access time
+      - real selectivity of the filter.
+  */
 };
 
 
@@ -670,6 +711,7 @@ public:
   void print_json(Json_writer *writer, bool is_analyze);
 };
 
+
 /*
   EXPLAIN data structure for a single JOIN_TAB.
 */
@@ -689,7 +731,8 @@ public:
     cache_cond(NULL),
     pushed_index_cond(NULL),
     sjm_nest(NULL),
-    pre_join_sort(NULL)
+    pre_join_sort(NULL),
+    rowid_filter(NULL)
   {}
   ~Explain_table_access() { delete sjm_nest; }
 
@@ -794,8 +837,12 @@ public:
   /* Tracker for reading the table */
   Table_access_tracker tracker;
   Exec_time_tracker op_tracker;
+  Gap_time_tracker extra_time_tracker;
+
   Table_access_tracker jbuf_tracker;
   
+  Explain_rowid_filter *rowid_filter;
+
   int print_explain(select_result_sink *output, uint8 explain_flags, 
                     bool is_analyze,
                     uint select_id, const char *select_type,
@@ -806,7 +853,7 @@ public:
 private:
   void append_tag_name(String *str, enum explain_extra_tag tag);
   void fill_key_str(String *key_str, bool is_json) const;
-  void fill_key_len_str(String *key_len_str) const;
+  void fill_key_len_str(String *key_len_str, bool is_json) const;
   double get_r_filtered();
   void tag_to_json(Json_writer *writer, enum explain_extra_tag tag);
 };

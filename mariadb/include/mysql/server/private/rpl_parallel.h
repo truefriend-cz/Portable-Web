@@ -244,6 +244,8 @@ struct rpl_parallel_thread_pool {
   rpl_parallel_thread_pool();
   int init(uint32 size);
   void destroy();
+  void deactivate();
+  void destroy_cond_mutex();
   struct rpl_parallel_thread *get_thread(rpl_parallel_thread **owner,
                                          rpl_parallel_entry *entry);
   void release_thread(rpl_parallel_thread *rpt);
@@ -345,7 +347,8 @@ struct rpl_parallel_entry {
   group_commit_orderer *current_gco;
 
   rpl_parallel_thread * choose_thread(rpl_group_info *rgi, bool *did_enter_cond,
-                                      PSI_stage_info *old_stage, bool reuse);
+                                      PSI_stage_info *old_stage,
+                                      Gtid_log_event *gtid_ev);
   int queue_master_restart(rpl_group_info *rgi,
                            Format_description_log_event *fdev);
 };

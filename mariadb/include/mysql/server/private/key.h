@@ -11,7 +11,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1335  USA */
 
 #ifndef KEY_INCLUDED
 #define KEY_INCLUDED
@@ -25,7 +25,7 @@ typedef struct st_key_part_info KEY_PART_INFO;
 
 int find_ref_key(KEY *key, uint key_count, uchar *record, Field *field,
                  uint *key_length, uint *keypart);
-void key_copy(uchar *to_key, const uchar *from_record, KEY *key_info,
+void key_copy(uchar *to_key, const uchar *from_record, const KEY *key_info,
               uint key_length, bool with_zerofill= FALSE);
 void key_restore(uchar *to_record, const uchar *from_key, KEY *key_info,
                  uint key_length);

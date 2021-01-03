@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Library General Public
 # License along with this library; if not, write to the Free
 # Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston,
-# MA 02110-1301, USA
+# MA 02110-1335  USA
 
 use Getopt::Long;
 use POSIX qw(strftime getcwd);
@@ -29,7 +29,7 @@ my @defaults_options;   #  Leading --no-defaults, --defaults-file, etc.
 $opt_example       = 0;
 $opt_help          = 0;
 $opt_log           = undef();
-$opt_mysqladmin    = "C:/Program Files/MySQL/bin/mysqladmin";
+$opt_mysqladmin    = "C:/Program Files (x86)/MySQL/bin/mysqladmin";
 $opt_mysqld        = "./bin/mysqld";
 $opt_no_log        = 0;
 $opt_password      = undef();
@@ -221,7 +221,7 @@ sub defaults_for_group
 
 ####
 #### Init log file. Check for appropriate place for log file, in the following
-#### order:  my_print_defaults mysqld datadir, C:/Program Files/MySQL/share
+#### order:  my_print_defaults mysqld datadir, C:/Program Files (x86)/MySQL/share
 ####
 
 sub init_log
@@ -235,7 +235,7 @@ sub init_log
   }
   if (!defined($logdir))
   {
-    $logdir= "C:/Program Files/MySQL/share" if (-d "C:/Program Files/MySQL/share" && -w "C:/Program Files/MySQL/share");
+    $logdir= "C:/Program Files (x86)/MySQL/share" if (-d "C:/Program Files (x86)/MySQL/share" && -w "C:/Program Files (x86)/MySQL/share");
   }
   if (!defined($logdir))
   {
@@ -362,6 +362,7 @@ sub start_mysqlds()
       print "wanted mysqld binary.\n\n";
       $info_sent= 1;
     }
+
     $com.= $tmp;
 
     if ($opt_wsrep_new_cluster) {
@@ -718,7 +719,7 @@ sub example
 #   (as per Linux/Unix standard). You may even replace the
 #   /etc/init.d/mysql.server script with it.
 #
-#   Before using, you must create a my.cnf file either in C:/Program Files/MySQL/my.cnf
+#   Before using, you must create a my.cnf file either in C:/Program Files (x86)/MySQL/my.cnf
 #   or /root/.my.cnf and add the [mysqld_multi] and [mysqld#] groups.
 #
 #   The script can be found from support-files/mysqld_multi.server.sh
@@ -726,17 +727,17 @@ sub example
 #
 
 [mysqld_multi]
-mysqld     = C:/Program Files/MySQL/bin/mysqld_safe
-mysqladmin = C:/Program Files/MySQL/bin/mysqladmin
+mysqld     = C:/Program Files (x86)/MySQL/bin/mysqld_safe
+mysqladmin = C:/Program Files (x86)/MySQL/bin/mysqladmin
 user       = multi_admin
 password   = my_password
 
 [mysqld2]
 socket     = /tmp/mysql.sock2
 port       = 3307
-pid-file   = C:/Program Files/MariaDB 10.3/data2/hostname.pid2
-datadir    = C:/Program Files/MariaDB 10.3/data2
-language   = C:/Program Files/MySQL/share/mysql/english
+pid-file   = C:/Program Files/MariaDB 10.5/data2/hostname.pid2
+datadir    = C:/Program Files/MariaDB 10.5/data2
+language   = C:/Program Files (x86)/MySQL/share/mysql/english
 user       = unix_user1
 
 [mysqld3]
@@ -745,25 +746,25 @@ ledir      = /path/to/mysqld-binary/
 mysqladmin = /path/to/mysqladmin
 socket     = /tmp/mysql.sock3
 port       = 3308
-pid-file   = C:/Program Files/MariaDB 10.3/data3/hostname.pid3
-datadir    = C:/Program Files/MariaDB 10.3/data3
-language   = C:/Program Files/MySQL/share/mysql/swedish
+pid-file   = C:/Program Files/MariaDB 10.5/data3/hostname.pid3
+datadir    = C:/Program Files/MariaDB 10.5/data3
+language   = C:/Program Files (x86)/MySQL/share/mysql/swedish
 user       = unix_user2
 
 [mysqld4]
 socket     = /tmp/mysql.sock4
 port       = 3309
-pid-file   = C:/Program Files/MariaDB 10.3/data4/hostname.pid4
-datadir    = C:/Program Files/MariaDB 10.3/data4
-language   = C:/Program Files/MySQL/share/mysql/estonia
+pid-file   = C:/Program Files/MariaDB 10.5/data4/hostname.pid4
+datadir    = C:/Program Files/MariaDB 10.5/data4
+language   = C:/Program Files (x86)/MySQL/share/mysql/estonia
 user       = unix_user3
  
 [mysqld6]
 socket     = /tmp/mysql.sock6
 port       = 3311
-pid-file   = C:/Program Files/MariaDB 10.3/data6/hostname.pid6
-datadir    = C:/Program Files/MariaDB 10.3/data6
-language   = C:/Program Files/MySQL/share/mysql/japanese
+pid-file   = C:/Program Files/MariaDB 10.5/data6/hostname.pid6
+datadir    = C:/Program Files/MariaDB 10.5/data6
+language   = C:/Program Files (x86)/MySQL/share/mysql/japanese
 user       = unix_user4
 EOF
   exit(0);

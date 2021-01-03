@@ -13,7 +13,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 /*
   This file defines the client API to MySQL and also the ABI of the
@@ -95,6 +95,9 @@ extern char *mysql_unix_port;
 */
 #define IS_NUM(t)	(((t) <= MYSQL_TYPE_INT24 && (t) != MYSQL_TYPE_TIMESTAMP) || (t) == MYSQL_TYPE_YEAR || (t) == MYSQL_TYPE_NEWDECIMAL)
 #define IS_LONGDATA(t) ((t) >= MYSQL_TYPE_TINY_BLOB && (t) <= MYSQL_TYPE_STRING)
+
+
+typedef struct st_mysql_const_lex_string MARIADB_CONST_STRING;
 
 
 typedef struct st_mysql_field {
@@ -410,6 +413,14 @@ MYSQL_FIELD *STDCALL mysql_fetch_field_direct(MYSQL_RES *res,
 MYSQL_FIELD * STDCALL mysql_fetch_fields(MYSQL_RES *res);
 MYSQL_ROW_OFFSET STDCALL mysql_row_tell(MYSQL_RES *res);
 MYSQL_FIELD_OFFSET STDCALL mysql_field_tell(MYSQL_RES *res);
+
+
+
+
+int STDCALL mariadb_field_attr(MARIADB_CONST_STRING *attr,
+                               const MYSQL_FIELD *field,
+                               enum mariadb_field_attr_t type);
+
 
 unsigned int STDCALL mysql_field_count(MYSQL *mysql);
 my_ulonglong STDCALL mysql_affected_rows(MYSQL *mysql);

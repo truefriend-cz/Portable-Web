@@ -11,7 +11,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #ifndef _SQL_CACHE_H
 #define _SQL_CACHE_H
@@ -608,5 +608,5 @@ struct Query_cache_query_flags
 #define query_cache_is_cacheable_query(L) 0
 #endif /*HAVE_QUERY_CACHE*/
 
-extern Query_cache query_cache;
+extern MYSQL_PLUGIN_IMPORT Query_cache query_cache;
 #endif

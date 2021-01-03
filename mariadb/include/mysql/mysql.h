@@ -61,6 +61,14 @@ typedef int my_socket;
 #include "ma_list.h"
 #include "mariadb_ctype.h"
 
+
+typedef struct st_ma_const_string
+{
+  const char *str;
+  size_t length;
+} MARIADB_CONST_STRING;
+
+
 #ifndef ST_MA_USED_MEM_DEFINED
 #define ST_MA_USED_MEM_DEFINED
   typedef struct st_ma_used_mem {   /* struct for once_alloc */
@@ -122,11 +130,13 @@ extern unsigned int mariadb_deinitialize_ssl;
   typedef unsigned int MYSQL_FIELD_OFFSET; /* offset to current field */
 
 #define SET_CLIENT_ERROR(a, b, c, d) \
-  { \
+  do { \
     (a)->net.last_errno= (b);\
     strncpy((a)->net.sqlstate, (c), SQLSTATE_LENGTH);\
+    (a)->net.sqlstate[SQLSTATE_LENGTH]= 0;\
     strncpy((a)->net.last_error, (d) ? (d) : ER((b)), MYSQL_ERRMSG_SIZE - 1);\
-  }
+    (a)->net.last_error[MYSQL_ERRMSG_SIZE - 1]= 0;\
+  } while(0)
 
 /* For mysql_async.c */
 #define set_mariadb_error(A,B,C) SET_CLIENT_ERROR((A),(B),(C),0)
@@ -134,11 +144,13 @@ extern const char *SQLSTATE_UNKNOWN;
 #define unknown_sqlstate SQLSTATE_UNKNOWN
 
 #define CLEAR_CLIENT_ERROR(a) \
-  { \
+  do { \
     (a)->net.last_errno= 0;\
     strcpy((a)->net.sqlstate, "00000");\
     (a)->net.last_error[0]= '\0';\
-  }
+    if ((a)->net.extension)\
+      (a)->net.extension->extended_errno= 0;\
+  } while (0)
 
 #define MYSQL_COUNT_ERROR (~(unsigned long long) 0)
 
@@ -233,7 +245,8 @@ extern const char *SQLSTATE_UNKNOWN;
     MARIADB_OPT_MULTI_RESULTS,
     MARIADB_OPT_MULTI_STATEMENTS,
     MARIADB_OPT_INTERACTIVE,
-    MARIADB_OPT_PROXY_HEADER
+    MARIADB_OPT_PROXY_HEADER,
+    MARIADB_OPT_IO_WAIT
   };
 
   enum mariadb_value {
@@ -379,6 +392,20 @@ typedef struct
   void *extension;
 } MYSQL_PARAMETERS;
 
+
+enum mariadb_field_attr_t
+{
+  MARIADB_FIELD_ATTR_DATA_TYPE_NAME= 0,
+  MARIADB_FIELD_ATTR_FORMAT_NAME= 1
+};
+
+#define MARIADB_FIELD_ATTR_LAST MARIADB_FIELD_ATTR_FORMAT_NAME
+
+
+int STDCALL mariadb_field_attr(MARIADB_CONST_STRING *attr,
+                               const MYSQL_FIELD *field,
+                               enum mariadb_field_attr_t type);
+
 #ifndef _mysql_time_h_
 enum enum_mysql_timestamp_type
 {
@@ -431,9 +458,9 @@ typedef struct character_set
   const char *desc;                                     \
   unsigned int version[3];                              \
   const char *license;                                  \
-  void *mariadb_api;                                    \
+  void *mysql_api;                                      \
   int (*init)(char *, size_t, int, va_list);            \
-  int (*deinit)();                                      \
+  int (*deinit)(void);                                  \
   int (*options)(const char *option, const void *);
 struct st_mysql_client_plugin
 {

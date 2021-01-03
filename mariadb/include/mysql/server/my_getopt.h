@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #ifndef _my_getopt_h
 #define _my_getopt_h
@@ -89,7 +89,7 @@ struct my_option
   void       *app_type;                 /**< To be used by an application */
 };
 
-typedef my_bool (*my_get_one_option)(int, const struct my_option *, char *);
+typedef my_bool (*my_get_one_option)(const struct my_option *, char *, const char *);
 
 /**
   Used to retrieve a reference to the object (variable) that holds the value
@@ -106,14 +106,16 @@ extern char *autoset_my_option;
 extern my_bool my_getopt_print_errors;
 extern my_bool my_getopt_skip_unknown;
 extern my_bool my_getopt_prefix_matching;
+extern my_bool my_handle_options_init_variables;
 extern my_error_reporter my_getopt_error_reporter;
+extern my_getopt_value my_getopt_get_addr;
 
 extern int handle_options (int *argc, char ***argv, 
-			   const struct my_option *longopts, my_get_one_option);
+			   const struct my_option *longopts, my_get_one_option)
+  __attribute__((nonnull));
 extern void my_cleanup_options(const struct my_option *options);
 extern void my_print_help(const struct my_option *options);
 extern void my_print_variables(const struct my_option *options);
-extern void my_getopt_register_get_addr(my_getopt_value);
 
 ulonglong getopt_ull_limit_value(ulonglong num, const struct my_option *optp,
                                  my_bool *fix);
@@ -121,7 +123,6 @@ longlong getopt_ll_limit_value(longlong, const struct my_option *,
                                my_bool *fix);
 double getopt_double_limit_value(double num, const struct my_option *optp,
                                  my_bool *fix);
-my_bool getopt_compare_strings(const char *s, const char *t, uint length);
 
 ulonglong getopt_double2ulonglong(double);
 double getopt_ulonglong2double(ulonglong);

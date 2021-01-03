@@ -4,9 +4,9 @@ qprocess "nginx.exe" >nul 2>&1
 if %errorlevel% equ 0 (
 	echo nginx.exe is running!
 )
-qprocess "mysqld.exe" >nul 2>&1
+qprocess "mariadbd.exe" >nul 2>&1
 if %errorlevel% equ 0 (
-	echo mysqld.exe is running!
+	echo mariadbd.exe is running!
 )
 qprocess "php-cgi.exe" >nul 2>&1
 if %errorlevel% equ 0 (

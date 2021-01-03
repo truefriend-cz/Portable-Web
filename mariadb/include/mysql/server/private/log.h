@@ -1,5 +1,5 @@
 /* Copyright (c) 2005, 2016, Oracle and/or its affiliates.
-   Copyright (c) 2009, 2017, MariaDB Corporation.
+   Copyright (c) 2009, 2020, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -12,13 +12,12 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1335  USA */
 
 #ifndef LOG_H
 #define LOG_H
 
 #include "handler.h"                            /* my_xid */
-#include "wsrep.h"
 #include "wsrep_mysqld.h"
 #include "rpl_constants.h"
 
@@ -26,6 +25,7 @@ class Relay_log_info;
 
 class Format_description_log_event;
 
+bool reopen_fstreams(const char *filename, FILE *outstream, FILE *errstream);
 void setup_log_handling();
 bool trans_has_updated_trans_table(const THD* thd);
 bool stmt_has_updated_trans_table(const THD *thd);
@@ -61,6 +61,7 @@ class TC_LOG
                             bool need_prepare_ordered,
                             bool need_commit_ordered) = 0;
   virtual int unlog(ulong cookie, my_xid xid)=0;
+  virtual int unlog_xa_prepare(THD *thd, bool all)= 0;
   virtual void commit_checkpoint_notify(void *cookie)= 0;
 
 protected:
@@ -115,6 +116,10 @@ public:
     return 1;
   }
   int unlog(ulong cookie, my_xid xid)  { return 0; }
+  int unlog_xa_prepare(THD *thd, bool all)
+  {
+    return 0;
+  }
   void commit_checkpoint_notify(void *cookie) { DBUG_ASSERT(0); };
 };
 
@@ -198,6 +203,10 @@ class TC_LOG_MMAP: public TC_LOG
   int log_and_order(THD *thd, my_xid xid, bool all,
                     bool need_prepare_ordered, bool need_commit_ordered);
   int unlog(ulong cookie, my_xid xid);
+  int unlog_xa_prepare(THD *thd, bool all)
+  {
+    return 0;
+  }
   void commit_checkpoint_notify(void *cookie);
   int recover();
 
@@ -248,10 +257,6 @@ extern TC_LOG_DUMMY tc_log_dummy;
 
 class Relay_log_info;
 
-#ifdef HAVE_PSI_INTERFACE
-extern PSI_mutex_key key_LOG_INFO_lock;
-#endif
-
 /*
   Note that we destroy the lock mutex in the desctructor here.
   This means that object instances cannot be destroyed/go out of scope,
@@ -263,19 +268,11 @@ typedef struct st_log_info
   my_off_t index_file_offset, index_file_start_offset;
   my_off_t pos;
   bool fatal; // if the purge happens to give us a negative offset
-  mysql_mutex_t lock;
   st_log_info() : index_file_offset(0), index_file_start_offset(0),
       pos(0), fatal(0)
   {
     DBUG_ENTER("LOG_INFO");
     log_file_name[0] = '\0';
-    mysql_mutex_init(key_LOG_INFO_lock, &lock, MY_MUTEX_INIT_FAST);
-    DBUG_VOID_RETURN;
-  }
-  ~st_log_info()
-  {
-    DBUG_ENTER("~LOG_INFO");
-    mysql_mutex_destroy(&lock);
     DBUG_VOID_RETURN;
   }
 } LOG_INFO;
@@ -298,6 +295,12 @@ enum enum_log_type { LOG_UNKNOWN, LOG_NORMAL, LOG_BIN };
 enum enum_log_state { LOG_OPENED, LOG_CLOSED, LOG_TO_BE_OPENED };
 
 /*
+  Use larger buffers when reading from and to binary log
+  We make it one step smaller than 64K to account for malloc overhead.
+*/
+#define LOG_BIN_IO_SIZE MY_ALIGN_DOWN(65536-1, IO_SIZE)
+
+/*
   TODO use mmap instead of IO_CACHE for binlog
   (mmap+fsync is two times faster than write+fsync)
 */
@@ -306,6 +309,7 @@ class MYSQL_LOG
 {
 public:
   MYSQL_LOG();
+  virtual ~MYSQL_LOG() {}
   void init_pthread_objects();
   void cleanup();
   bool open(
@@ -316,20 +320,13 @@ public:
             enum_log_type log_type,
             const char *new_name, ulong next_file_number,
             enum cache_type io_cache_type_arg);
-  bool init_and_set_log_file_name(const char *log_name,
-                                  const char *new_name,
-                                  ulong next_log_number,
-                                  enum_log_type log_type_arg,
-                                  enum cache_type io_cache_type_arg);
-  void init(enum_log_type log_type_arg,
-            enum cache_type io_cache_type_arg);
   void close(uint exiting);
   inline bool is_open() { return log_state != LOG_CLOSED; }
   const char *generate_name(const char *log_name,
                             const char *suffix,
                             bool strip_ext, char *buff);
-  int generate_new_name(char *new_name, const char *log_name,
-                        ulong next_log_number);
+  virtual int generate_new_name(char *new_name, const char *log_name,
+                                ulong next_log_number);
  protected:
   /* LOCK_log is inited by init_pthread_objects() */
   mysql_mutex_t LOCK_log;
@@ -346,7 +343,12 @@ public:
   /** Instrumentation key to use for file io in @c log_file */
   PSI_file_key m_log_file_key;
 #endif
-  /* for documentation of mutexes held in various places in code */
+
+  bool init_and_set_log_file_name(const char *log_name,
+                                  const char *new_name,
+                                  ulong next_log_number,
+                                  enum_log_type log_type_arg,
+                                  enum cache_type io_cache_type_arg);
 };
 
 /* Tell the io thread if we can delay the master info sync. */
@@ -425,8 +427,6 @@ struct wait_for_commit;
 
 class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
 {
- private:
-#ifdef HAVE_PSI_INTERFACE
   /** The instrumentation key to use for @ LOCK_index. */
   PSI_mutex_key m_key_LOCK_index;
   /** The instrumentation key to use for @ COND_relay_log_updated */
@@ -434,14 +434,13 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
   /** The instrumentation key to use for @ COND_bin_log_updated */
   PSI_cond_key m_key_bin_log_update;
   /** The instrumentation key to use for opening the log file. */
-  PSI_file_key m_key_file_log;
+  PSI_file_key m_key_file_log, m_key_file_log_cache;
   /** The instrumentation key to use for opening the log index file. */
-  PSI_file_key m_key_file_log_index;
+  PSI_file_key m_key_file_log_index, m_key_file_log_index_cache;
 
-  PSI_file_key m_key_COND_queue_busy;
+  PSI_cond_key m_key_COND_queue_busy;
   /** The instrumentation key to use for LOCK_binlog_end_pos. */
   PSI_mutex_key m_key_LOCK_binlog_end_pos;
-#endif
 
   struct group_commit_entry
   {
@@ -516,6 +515,11 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
      GLOBAL MAX_BINLOG_SIZE|MAX_RELAY_LOG_SIZE) from sys_vars.cc
   */
   ulong max_size;
+  /*
+    Number generated by last call of find_uniq_filename(). Corresponds
+    closely with current_binlog_id
+  */
+  ulong last_used_log_number;
   // current file sequence number for load data infile binary logging
   uint file_id;
   uint open_count;				// For replication
@@ -562,7 +566,7 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
     LOCK_log.
   */
   int new_file_without_locking();
-  int new_file_impl(bool need_lock);
+  int new_file_impl();
   void do_checkpoint_request(ulong binlog_id);
   void purge();
   int write_transaction_or_stmt(group_commit_entry *entry, uint64 commit_id);
@@ -570,13 +574,6 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
   bool write_transaction_to_binlog_events(group_commit_entry *entry);
   void trx_group_commit_leader(group_commit_entry *leader);
   bool is_xidlist_idle_nolock();
-#ifdef WITH_WSREP
-  /*
-   When this mariadb node is slave and galera enabled. So in this case
-   we write the gtid in wsrep_run_commit itself.
-  */
-  inline bool is_gtid_cached(THD *thd);
-#endif
 public:
   /*
     A list of struct xid_count_per_binlog is used to keep track of how many
@@ -599,7 +596,18 @@ public:
     long notify_count;
     /* For linking in requests to the binlog background thread. */
     xid_count_per_binlog *next_in_queue;
-    xid_count_per_binlog();   /* Give link error if constructor used. */
+    xid_count_per_binlog(char *log_file_name, uint log_file_name_len)
+      :binlog_id(0), xid_count(0), notify_count(0)
+    {
+      binlog_name_len= log_file_name_len;
+      binlog_name= (char *) my_malloc(PSI_INSTRUMENT_ME, binlog_name_len, MYF(MY_ZEROFILL));
+      if (binlog_name)
+        memcpy(binlog_name, log_file_name, binlog_name_len);
+    }
+    ~xid_count_per_binlog()
+    {
+      my_free(binlog_name);
+    }
   };
   I_List<xid_count_per_binlog> binlog_xid_count_list;
   mysql_mutex_t LOCK_binlog_background_thread;
@@ -679,15 +687,19 @@ public:
                     PSI_cond_key key_relay_log_update,
                     PSI_cond_key key_bin_log_update,
                     PSI_file_key key_file_log,
+                    PSI_file_key key_file_log_cache,
                     PSI_file_key key_file_log_index,
-                    PSI_file_key key_COND_queue_busy,
+                    PSI_file_key key_file_log_index_cache,
+                    PSI_cond_key key_COND_queue_busy,
                     PSI_mutex_key key_LOCK_binlog_end_pos)
   {
     m_key_LOCK_index= key_LOCK_index;
     m_key_relay_log_update=  key_relay_log_update;
     m_key_bin_log_update=    key_bin_log_update;
     m_key_file_log= key_file_log;
+    m_key_file_log_cache= key_file_log_cache;
     m_key_file_log_index= key_file_log_index;
+    m_key_file_log_index_cache= key_file_log_index_cache;
     m_key_COND_queue_busy= key_COND_queue_busy;
     m_key_LOCK_binlog_end_pos= key_LOCK_binlog_end_pos;
   }
@@ -695,9 +707,12 @@ public:
 
   int open(const char *opt_name);
   void close();
+  virtual int generate_new_name(char *new_name, const char *log_name,
+                                ulong next_log_number);
   int log_and_order(THD *thd, my_xid xid, bool all,
                     bool need_prepare_ordered, bool need_commit_ordered);
   int unlog(ulong cookie, my_xid xid);
+  int unlog_xa_prepare(THD *thd, bool all);
   void commit_checkpoint_notify(void *cookie);
   int recover(LOG_INFO *linfo, const char *last_log_name, IO_CACHE *first_log,
               Format_description_log_event *fdle, bool do_xa);
@@ -780,7 +795,6 @@ public:
   void init_pthread_objects();
   void cleanup();
   bool open(const char *log_name,
-            enum_log_type log_type,
             const char *new_name,
             ulong next_log_number,
 	    enum cache_type io_cache_type_arg,
@@ -1136,6 +1150,7 @@ File open_binlog(IO_CACHE *log, const char *log_file_name,
 
 void make_default_log_name(char **out, const char* log_ext, bool once);
 void binlog_reset_cache(THD *thd);
+bool write_annotated_row(THD *thd);
 
 extern MYSQL_PLUGIN_IMPORT MYSQL_BIN_LOG mysql_bin_log;
 extern handlerton *binlog_hton;
@@ -1212,6 +1227,11 @@ static inline TC_LOG *get_tc_log_implementation()
   return &tc_log_mmap;
 }
 
+#ifdef WITH_WSREP
+IO_CACHE* wsrep_get_trans_cache(THD *);
+void wsrep_thd_binlog_trx_reset(THD * thd);
+void wsrep_thd_binlog_stmt_rollback(THD * thd);
+#endif /* WITH_WSREP */
 
 class Gtid_list_log_event;
 const char *

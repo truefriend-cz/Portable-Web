@@ -1,5 +1,5 @@
 /* Copyright (c) 2000, 2018, Oracle and/or its affiliates.
-   Copyright (c) 2010, 2018, Monty Program Ab.
+   Copyright (c) 2010, 2019, MariaDB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 /**
   @file
@@ -146,7 +146,7 @@
 /** The following speeds up inserts to InnoDB tables by suppressing unique
    key checks in some cases */
 #define OPTION_RELAXED_UNIQUE_CHECKS    (1ULL << 27) // THD, user, binlog
-#define SELECT_NO_UNLOCK                (1ULL << 28) // SELECT, intern
+#define OPTION_IF_EXISTS                (1ULL << 28) // binlog
 #define OPTION_SCHEMA_TABLE             (1ULL << 29) // SELECT, intern
 /** Flag set if setup_tables already done */
 #define OPTION_SETUP_TABLES_DONE        (1ULL << 30) // intern
@@ -177,7 +177,15 @@
 
 #define OPTION_SKIP_REPLICATION         (1ULL << 37) // THD, user
 #define OPTION_RPL_SKIP_PARALLEL        (1ULL << 38)
-#define OPTION_FOUND_COMMENT            (1ULL << 39) // SELECT, intern, parser
+#define OPTION_NO_QUERY_CACHE           (1ULL << 39) // SELECT, user
+#define OPTION_PROCEDURE_CLAUSE         (1ULL << 40) // Internal usage
+#define SELECT_NO_UNLOCK                (1ULL << 41) // SELECT, intern
+#define SELECT_NO_UNLOCK                (1ULL << 41) // SELECT, intern
+#define OPTION_BIN_TMP_LOG_OFF          (1ULL << 42) // disable binlog, intern
+/* Disable commit of binlog. Used to combine many DDL's and DML's as one */
+#define OPTION_BIN_COMMIT_OFF           (1ULL << 43)
+
+#define OPTION_LEX_FOUND_COMMENT        (1ULL << 0) //  intern, parser
 
 /* The rest of the file is included in the server only */
 #ifndef MYSQL_CLIENT
@@ -222,6 +230,10 @@
 #define OPTIMIZER_SWITCH_ORDERBY_EQ_PROP           (1ULL << 29)
 #define OPTIMIZER_SWITCH_COND_PUSHDOWN_FOR_DERIVED (1ULL << 30)
 #define OPTIMIZER_SWITCH_SPLIT_MATERIALIZED        (1ULL << 31)
+#define OPTIMIZER_SWITCH_COND_PUSHDOWN_FOR_SUBQUERY (1ULL << 32)
+#define OPTIMIZER_SWITCH_USE_ROWID_FILTER          (1ULL << 33)
+#define OPTIMIZER_SWITCH_COND_PUSHDOWN_FROM_HAVING (1ULL << 34)
+#define OPTIMIZER_SWITCH_NOT_NULL_RANGE_SCAN       (1ULL << 35)
 
 #define OPTIMIZER_SWITCH_DEFAULT   (OPTIMIZER_SWITCH_INDEX_MERGE | \
                                     OPTIMIZER_SWITCH_INDEX_MERGE_UNION | \
@@ -248,7 +260,11 @@
                                     OPTIMIZER_SWITCH_EXISTS_TO_IN | \
                                     OPTIMIZER_SWITCH_ORDERBY_EQ_PROP | \
                                     OPTIMIZER_SWITCH_COND_PUSHDOWN_FOR_DERIVED | \
-                                    OPTIMIZER_SWITCH_SPLIT_MATERIALIZED)
+                                    OPTIMIZER_SWITCH_SPLIT_MATERIALIZED | \
+                                    OPTIMIZER_SWITCH_COND_PUSHDOWN_FOR_SUBQUERY | \
+                                    OPTIMIZER_SWITCH_USE_ROWID_FILTER | \
+                                    OPTIMIZER_SWITCH_COND_PUSHDOWN_FROM_HAVING | \
+                                    OPTIMIZER_SWITCH_OPTIMIZE_JOIN_BUFFER_SIZE)
 
 /*
   Replication uses 8 bytes to store SQL_MODE in the binary log. The day you
@@ -333,10 +349,15 @@
 #ifndef MYSQL_CLIENT
 
 /*
-  Some defines for exit codes for ::is_equal class functions.
+  Field::is_equal() return codes.
 */
 #define IS_EQUAL_NO 0
 #define IS_EQUAL_YES 1
+/**
+  new_field has compatible packed representation with old type,
+  so it is theoretically possible to perform change by only updating
+  data dictionary without changing table rows
+*/
 #define IS_EQUAL_PACK_LENGTH 2
 
 enum enum_parsing_place
@@ -350,6 +371,9 @@ enum enum_parsing_place
   IN_ORDER_BY,
   IN_UPDATE_ON_DUP_KEY,
   IN_PART_FUNC,
+  BEFORE_OPT_LIST,
+  AFTER_LIST,
+  FOR_LOOP_BOUND,
   PARSING_PLACE_SIZE /* always should be the last */
 };
 
@@ -370,7 +394,8 @@ enum enum_yes_no_unknown
 
 /* sql_yacc.cc */
 #ifndef DBUG_OFF
-extern void turn_parser_debug_on();
+extern void turn_parser_debug_on_MYSQLparse();
+extern void turn_parser_debug_on_ORAparse();
 
 #endif
 

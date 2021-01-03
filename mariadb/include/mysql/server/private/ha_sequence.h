@@ -71,7 +71,7 @@ public:
   int create(const char *name, TABLE *form,
              HA_CREATE_INFO *create_info);
   handler *clone(const char *name, MEM_ROOT *mem_root);
-  int write_row(uchar *buf);
+  int write_row(const uchar *buf);
   Table_flags table_flags() const;
   /* One can't update or delete from sequence engine */
   int update_row(const uchar *old_data, const uchar *new_data)
@@ -140,9 +140,9 @@ public:
   int rename_table(const char *from, const char *to)
   { return file->rename_table(from, to); }
   void unbind_psi()
-  { return file->unbind_psi(); }
+  { file->unbind_psi(); }
   void rebind_psi()
-  { return file->rebind_psi(); }
+  { file->rebind_psi(); }
 
   bool auto_repair(int error) const
   { return file->auto_repair(error); }

@@ -11,7 +11,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1335  USA */
 
 #ifndef DISCOVER_INCLUDED
 #define DISCOVER_INCLUDED
@@ -21,8 +21,8 @@ int extension_based_table_discovery(MY_DIR *dirp, const char *ext,
 
 #ifdef MYSQL_SERVER
 int readfrm(const char *name, const uchar **data, size_t *length);
-int writefrm(const char *path, const char *db, const char *table,
-             bool tmp_table, const uchar *frmdata, size_t len);
+int writefile(const char *path, const char *db, const char *table,
+              bool tmp_table, const uchar *frmdata, size_t len);
 
 /* a helper to delete an frm file, given a path w/o .frm extension */
 inline void deletefrm(const char *path)

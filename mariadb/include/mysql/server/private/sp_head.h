@@ -1,6 +1,7 @@
 /* -*- C++ -*- */
 /*
    Copyright (c) 2002, 2011, Oracle and/or its affiliates.
+   Copyright (c) 2020, MariaDB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -13,7 +14,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #ifndef _SP_HEAD_H_
 #define _SP_HEAD_H_
@@ -39,15 +40,20 @@
   @{
 */
 
-Item::Type
-sp_map_item_type(const Type_handler *handler);
-
 uint
 sp_get_flags_for_command(LEX *lex);
 
 class sp_instr;
 class sp_instr_opt_meta;
 class sp_instr_jump_if_not;
+
+/**
+  Number of PSI_statement_info instruments
+  for internal stored programs statements.
+*/
+#ifdef HAVE_PSI_INTERFACE
+void init_sp_psi_keys(void);
+#endif
 
 /*************************************************************************/
 
@@ -127,10 +133,11 @@ bool
 check_routine_name(const LEX_CSTRING *ident);
 
 class sp_head :private Query_arena,
-               public Database_qualified_name
+               public Database_qualified_name,
+               public Sql_alloc
 {
-  sp_head(const sp_head &);	/**< Prevent use of these */
-  void operator=(sp_head &);
+  sp_head(const sp_head &)= delete;
+  void operator=(sp_head &)= delete;
 
 protected:
   MEM_ROOT main_mem_root;
@@ -175,6 +182,11 @@ public:
   const Sp_handler *m_handler;
   uint m_flags;                 // Boolean attributes of a stored routine
 
+  /**
+    Instrumentation interface for SP.
+  */
+  PSI_sp_share *m_sp_share;
+
   Column_definition m_return_field_def; /**< This is used for FUNCTIONs only. */
 
   const char *m_tmp_query;	///< Temporary pointer to sub query string
@@ -186,6 +198,11 @@ private:
     set_chistics() makes sure this.
   */
   Sp_chistics m_chistics;
+  void set_chistics(const st_sp_chistics &chistics);
+  inline void set_chistics_agg_type(enum enum_sp_aggregate_type type)
+  {
+    m_chistics.agg_type= type;
+  }
 public:
   sql_mode_t m_sql_mode;		///< For SHOW CREATE and execution
   bool       m_explicit_name;                   /**< Prepend the db name? */
@@ -316,13 +333,14 @@ public:
   */
   SQL_I_List<Item_trigger_field> m_trg_table_fields;
 
-  static void *
-  operator new(size_t size) throw ();
-
-  static void
-  operator delete(void *ptr, size_t size) throw ();
-
-  sp_head(sp_package *parent, const Sp_handler *handler);
+protected:
+  sp_head(MEM_ROOT *mem_root, sp_package *parent, const Sp_handler *handler,
+          enum_sp_aggregate_type agg_type);
+  virtual ~sp_head();
+public:
+  static void destroy(sp_head *sp);
+  static sp_head *create(sp_package *parent, const Sp_handler *handler,
+                         enum_sp_aggregate_type agg_type);
 
   /// Initialize after we have reset mem_root
   void
@@ -340,7 +358,6 @@ public:
   void
   set_stmt_end(THD *thd);
 
-  virtual ~sp_head();
 
   bool
   execute_trigger(THD *thd,
@@ -415,6 +432,10 @@ public:
                                             const LEX_CSTRING *field_name,
                                             Item *val, LEX *lex);
   bool check_package_routine_end_name(const LEX_CSTRING &end_name) const;
+  bool check_standalone_routine_end_name(const sp_name *end_name) const;
+  bool check_group_aggregate_instructions_function() const;
+  bool check_group_aggregate_instructions_forbid() const;
+  bool check_group_aggregate_instructions_require() const;
 private:
   /**
     Generate a code to set a single cursor parameter variable.
@@ -592,7 +613,8 @@ public:
     if (!oldlex)
       DBUG_RETURN(false); // Nothing to restore
     LEX *sublex= thd->lex;
-    if (thd->restore_from_local_lex_to_old_lex(oldlex))// This restores thd->lex
+    // This restores thd->lex and thd->stmt_lex
+    if (thd->restore_from_local_lex_to_old_lex(oldlex))
       DBUG_RETURN(true);
     if (!sublex->sp_lex_in_use)
     {
@@ -731,11 +753,7 @@ public:
                                           const LEX_CSTRING &db,
                                           const LEX_CSTRING &table);
 
-  void set_chistics(const st_sp_chistics &chistics);
-  inline void set_chistics_agg_type(enum enum_sp_aggregate_type type)
-  {
-    m_chistics.agg_type= type;
-  }
+  void set_c_chistics(const st_sp_chistics &chistics);
   void set_info(longlong created, longlong modified,
 		const st_sp_chistics &chistics, sql_mode_t sql_mode);
 
@@ -851,6 +869,8 @@ public:
     return NULL;
   }
 
+  virtual void init_psi_share();
+
 protected:
 
   MEM_ROOT *m_thd_root;		///< Temp. store for thd's mem_root
@@ -926,9 +946,9 @@ public:
   public:
     LexList() { elements= 0; }
     // Find a package routine by a non qualified name
-    LEX *find(const LEX_CSTRING &name, stored_procedure_type type);
+    LEX *find(const LEX_CSTRING &name, enum_sp_type type);
     // Find a package routine by a package-qualified name, e.g. 'pkg.proc'
-    LEX *find_qualified(const LEX_CSTRING &name, stored_procedure_type type);
+    LEX *find_qualified(const LEX_CSTRING &name, enum_sp_type type);
     // Check if a routine with the given qualified name already exists
     bool check_dup_qualified(const LEX_CSTRING &name, const Sp_handler *sph)
     {
@@ -964,10 +984,16 @@ public:
   bool m_is_instantiated;
   bool m_is_cloning_routine;
 
-  sp_package(LEX *top_level_lex,
+private:
+  sp_package(MEM_ROOT *mem_root,
+             LEX *top_level_lex,
              const sp_name *name,
              const Sp_handler *sph);
   ~sp_package();
+public:
+  static sp_package *create(LEX *top_level_lex, const sp_name *name,
+                            const Sp_handler *sph);
+
   bool add_routine_declaration(LEX *lex)
   {
     return m_routine_declarations.check_dup_qualified(lex->sphead) ||
@@ -979,6 +1005,7 @@ public:
            m_routine_implementations.push_back(lex, &main_mem_root);
   }
   sp_package *get_package() { return this; }
+  void init_psi_share();
   bool is_invoked() const
   {
     /*
@@ -1145,6 +1172,7 @@ public:
   {
     m_ip= dst;
   }
+  virtual PSI_statement_info* get_psi_info() = 0;
 
 }; // class sp_instr : public Sql_alloc
 
@@ -1271,6 +1299,10 @@ private:
 
   sp_lex_keeper m_lex_keeper;
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
+
 }; // class sp_instr_stmt : public sp_instr
 
 
@@ -1305,6 +1337,10 @@ protected:
   uint m_offset;		///< Frame offset
   Item *m_value;
   sp_lex_keeper m_lex_keeper;
+
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_set : public sp_instr
 
 
@@ -1413,6 +1449,10 @@ private:
   Item_trigger_field *trigger_field;
   Item *value;
   sp_lex_keeper m_lex_keeper;
+
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_trigger_field : public sp_instr
 
 
@@ -1499,6 +1539,9 @@ public:
       m_dest= new_dest;
   }
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_jump : public sp_instr_opt_meta
 
 
@@ -1550,6 +1593,9 @@ private:
   Item *m_expr;			///< The condition
   sp_lex_keeper m_lex_keeper;
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_jump_if_not : public sp_instr_jump
 
 
@@ -1567,17 +1613,9 @@ public:
   virtual ~sp_instr_preturn()
   {}
 
-  virtual int execute(THD *thd, uint *nextp)
-  {
-    DBUG_ENTER("sp_instr_preturn::execute");
-    *nextp= UINT_MAX;
-    DBUG_RETURN(0);
-  }
+  virtual int execute(THD *thd, uint *nextp);
 
-  virtual void print(String *str)
-  {
-    str->append(STRING_WITH_LEN("preturn"));
-  }
+  virtual void print(String *str);
 
   virtual uint opt_mark(sp_head *sp, List<sp_instr> *leads)
   {
@@ -1585,6 +1623,9 @@ public:
     return UINT_MAX;
   }
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_preturn : public sp_instr
 
 
@@ -1622,6 +1663,9 @@ protected:
   const Type_handler *m_type_handler;
   sp_lex_keeper m_lex_keeper;
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_freturn : public sp_instr
 
 
@@ -1687,6 +1731,9 @@ private:
   // debug version only). It's used in print().
   uint m_frame;
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_hpush_jump : public sp_instr_jump
 
 
@@ -1717,6 +1764,9 @@ private:
 
   uint m_count;
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_hpop : public sp_instr
 
 
@@ -1751,12 +1801,14 @@ private:
 
   uint m_frame;
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_hreturn : public sp_instr_jump
 
 
 /** This is DECLARE CURSOR */
-class sp_instr_cpush : public sp_instr,
-                       public sp_cursor
+class sp_instr_cpush : public sp_instr, public sp_cursor
 {
   sp_instr_cpush(const sp_instr_cpush &); /**< Prevent use of these */
   void operator=(sp_instr_cpush &);
@@ -1785,6 +1837,9 @@ private:
   sp_lex_keeper m_lex_keeper;
   uint m_cursor;                /**< Frame offset (for debugging) */
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_cpush : public sp_instr
 
 
@@ -1815,6 +1870,9 @@ private:
 
   uint m_count;
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_cpop : public sp_instr
 
 
@@ -1842,6 +1900,9 @@ private:
 
   uint m_cursor;		///< Stack index
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_copen : public sp_instr_stmt
 
 
@@ -1869,6 +1930,10 @@ public:
   virtual int execute(THD *thd, uint *nextp);
   virtual int exec_core(THD *thd, uint *nextp);
   virtual void print(String *str);
+
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 };
 
 
@@ -1894,6 +1959,9 @@ private:
 
   uint m_cursor;
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_cclose : public sp_instr
 
 
@@ -1928,6 +1996,9 @@ private:
   List<sp_variable> m_varlist;
   bool m_error_on_no_data;
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_cfetch : public sp_instr
 
 /*
@@ -1952,6 +2023,10 @@ public:
   virtual int execute(THD *thd, uint *nextp);
 
   virtual void print(String *str);
+
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_agg_cfetch : public sp_instr
 
 
@@ -1985,6 +2060,9 @@ private:
 
   int m_errcode;
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_error : public sp_instr
 
 
@@ -2024,8 +2102,12 @@ private:
   Item *m_case_expr;
   sp_lex_keeper m_lex_keeper;
 
+public:
+  virtual PSI_statement_info* get_psi_info() { return & psi_info; }
+  static PSI_statement_info psi_info;
 }; // class sp_instr_set_case_expr : public sp_instr_opt_meta
 
+bool check_show_routine_access(THD *thd, sp_head *sp, bool *full_access);
 
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
 bool

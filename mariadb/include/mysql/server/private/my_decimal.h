@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA */
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1335  USA */
 
 /**
   @file
@@ -29,6 +29,8 @@
 #ifndef my_decimal_h
 #define my_decimal_h
 
+#include "sql_basic_types.h"
+
 #if defined(MYSQL_SERVER) || defined(EMBEDDED_LIBRARY)
 #include "sql_string.h"                         /* String */
 #endif
@@ -39,6 +41,7 @@ C_MODE_START
 C_MODE_END
 
 class String;
+class Field;
 typedef struct st_mysql_time MYSQL_TIME;
 
 /**
@@ -60,6 +63,25 @@ inline uint my_decimal_size(uint precision, uint scale)
 inline int my_decimal_int_part(uint precision, uint decimals)
 {
   return precision - ((decimals == DECIMAL_NOT_SPECIFIED) ? 0 : decimals);
+}
+
+
+#ifndef MYSQL_CLIENT
+int decimal_operation_results(int result, const char *value, const char *type);
+#else
+inline int decimal_operation_results(int result, const char *value,
+                                     const char *type)
+{
+  return result;
+}
+#endif /*MYSQL_CLIENT*/
+
+
+inline int check_result(uint mask, int result)
+{
+  if (result & mask)
+    decimal_operation_results(result, "", "DECIMAL");
+  return result;
 }
 
 
@@ -125,6 +147,12 @@ public:
   {
     init();
   }
+  my_decimal(const uchar *bin, int prec, int scale)
+  {
+    init();
+    check_result(E_DEC_FATAL_ERROR, bin2decimal(bin, this, prec, scale));
+  }
+  my_decimal(Field *field);
   ~my_decimal()
   {
     sanity_check();
@@ -141,7 +169,67 @@ public:
   bool sign() const { return decimal_t::sign; }
   void sign(bool s) { decimal_t::sign= s; }
   uint precision() const { return intg + frac; }
+  void set_zero()
+  {
+    /*
+      We need the up-cast here, since my_decimal has sign() member functions,
+      which conflicts with decimal_t::sign
+      (and decimal_make_zero is a macro, rather than a funcion).
+    */
+    decimal_make_zero(static_cast<decimal_t*>(this));
+  }
+  int cmp(const my_decimal *other) const
+  {
+    return decimal_cmp(this, other);
+  }
 
+#ifndef MYSQL_CLIENT
+  bool to_bool() const
+  {
+    return !decimal_is_zero(this);
+  }
+  double to_double() const
+  {
+    double res;
+    decimal2double(this, &res);
+    return res;
+  }
+  longlong to_longlong(bool unsigned_flag) const;
+  /*
+    Return the value as a signed or unsigned longlong, depending on the sign.
+    - Positive values are returned as unsigned.
+    - Negative values are returned as signed.
+    This is used by bit SQL operators: | & ^ ~
+    as well as by the SQL function BIT_COUNT().
+  */
+  longlong to_xlonglong() const
+  { return to_longlong(!sign()); }
+
+  // Convert to string returning decimal2string() error code
+  int to_string_native(String *to, uint prec, uint dec, char filler,
+                       uint mask= E_DEC_FATAL_ERROR) const;
+  // Convert to string returning the String pointer
+  String *to_string(String *to, uint prec, uint dec, char filler) const
+  {
+    return to_string_native(to, prec, dec, filler) ? NULL : to;
+  }
+  String *to_string(String *to) const
+  {
+    return to_string(to, 0, 0, 0);
+  }
+  String *to_string_round(String *to, int scale, my_decimal *round_buff) const
+  {
+    (void) round_to(round_buff, scale, HALF_UP); // QQ: check result?
+    return round_buff->to_string(to);
+  }
+  int round_to(my_decimal *to, int scale, decimal_round_mode mode,
+               int mask= E_DEC_FATAL_ERROR) const
+  {
+    return check_result(mask, decimal_round(this, to, scale, mode));
+  }
+  int to_binary(uchar *bin, int prec, int scale,
+                uint mask= E_DEC_FATAL_ERROR) const;
+#endif
   /** Swap two my_decimal values */
   void swap(my_decimal &rhs)
   {
@@ -164,16 +252,6 @@ bool str_set_decimal(uint mask, const my_decimal *val, uint fixed_prec,
 
 extern my_decimal decimal_zero;
 
-#ifndef MYSQL_CLIENT
-int decimal_operation_results(int result, const char *value, const char *type);
-#else
-inline int decimal_operation_results(int result, const char *value,
-                                     const char *type)
-{
-  return result;
-}
-#endif /*MYSQL_CLIENT*/
-
 inline
 void max_my_decimal(my_decimal *to, int precision, int frac)
 {
@@ -185,13 +263,6 @@ void max_my_decimal(my_decimal *to, int precision, int frac)
 inline void max_internal_decimal(my_decimal *to)
 {
   max_my_decimal(to, DECIMAL_MAX_PRECISION, 0);
-}
-
-inline int check_result(uint mask, int result)
-{
-  if (result & mask)
-    decimal_operation_results(result, "", "DECIMAL");
-  return result;
 }
 
 inline int check_result_and_overflow(uint mask, int result, my_decimal *val)
@@ -271,10 +342,6 @@ void my_decimal2decimal(const my_decimal *from, my_decimal *to)
 }
 
 
-int my_decimal2binary(uint mask, const my_decimal *d, uchar *bin, int prec,
-		      int scale);
-
-
 inline
 int binary2my_decimal(uint mask, const uchar *bin, my_decimal *d, int prec,
 		      int scale)
@@ -286,12 +353,7 @@ int binary2my_decimal(uint mask, const uchar *bin, my_decimal *d, int prec,
 inline
 int my_decimal_set_zero(my_decimal *d)
 {
-  /*
-    We need the up-cast here, since my_decimal has sign() member functions,
-    which conflicts with decimal_t::sign
-    (and decimal_make_zero is a macro, rather than a funcion).
-  */
-  decimal_make_zero(static_cast<decimal_t*>(d));
+  d->set_zero();
   return 0;
 }
 
@@ -303,42 +365,15 @@ bool my_decimal_is_zero(const my_decimal *decimal_value)
 }
 
 
-inline
-int my_decimal_round(uint mask, const my_decimal *from, int scale,
-                     bool truncate, my_decimal *to)
-{
-  return check_result(mask, decimal_round(from, to, scale,
-					  (truncate ? TRUNCATE : HALF_UP)));
-}
-
-
-inline
-int my_decimal_floor(uint mask, const my_decimal *from, my_decimal *to)
-{
-  return check_result(mask, decimal_round(from, to, 0, FLOOR));
-}
-
-
-inline
-int my_decimal_ceiling(uint mask, const my_decimal *from, my_decimal *to)
-{
-  return check_result(mask, decimal_round(from, to, 0, CEILING));
-}
-
-
 inline bool str_set_decimal(const my_decimal *val, String *str,
                             CHARSET_INFO *cs)
 {
   return str_set_decimal(E_DEC_FATAL_ERROR, val, 0, 0, 0, str, cs);
 }
 
-#ifndef MYSQL_CLIENT
-class String;
-int my_decimal2string(uint mask, const my_decimal *d, uint fixed_prec,
-		      uint fixed_dec, char filler, String *str);
-#endif
 
-bool my_decimal2seconds(const my_decimal *d, ulonglong *sec, ulong *microsec);
+bool my_decimal2seconds(const my_decimal *d, ulonglong *sec,
+                        ulong *microsec, ulong *nanosec);
 
 my_decimal *seconds2my_decimal(bool sign, ulonglong sec, ulong microsec,
                                my_decimal *d);
@@ -348,7 +383,7 @@ my_decimal *seconds2my_decimal(bool sign, ulonglong sec, ulong microsec,
                         (TIME)->second_part, (DECIMAL))
 
 int my_decimal2int(uint mask, const decimal_t *d, bool unsigned_flag,
-		   longlong *l);
+		   longlong *l, decimal_round_mode round_type= HALF_UP);
 
 inline
 int my_decimal2double(uint, const decimal_t *d, double *result)

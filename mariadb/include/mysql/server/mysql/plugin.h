@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #ifndef MYSQL_PLUGIN_INCLUDED
 #define MYSQL_PLUGIN_INCLUDED
@@ -23,18 +23,20 @@
   unlike other compilers, uses C++ mangling for variables not only
   for functions.
 */
-#if defined(_MSC_VER)
-  #ifdef __cplusplus
-    #define MYSQL_PLUGIN_EXPORT extern "C" __declspec(dllexport)
+#ifdef MYSQL_DYNAMIC_PLUGIN
+  #ifdef _MSC_VER
+    #define MYSQL_DLLEXPORT _declspec(dllexport)
   #else
-    #define MYSQL_PLUGIN_EXPORT __declspec(dllexport)
+    #define MYSQL_DLLEXPORT
   #endif
-#else /*_MSC_VER */
-  #ifdef __cplusplus
-    #define MYSQL_PLUGIN_EXPORT extern "C"
-  #else
-    #define MYSQL_PLUGIN_EXPORT
-  #endif
+#else
+  #define MYSQL_DLLEXPORT
+#endif
+
+#ifdef __cplusplus
+  #define MYSQL_PLUGIN_EXPORT extern "C" MYSQL_DLLEXPORT
+#else
+  #define MYSQL_PLUGIN_EXPORT MYSQL_DLLEXPORT
 #endif
 
 #ifdef __cplusplus
@@ -75,7 +77,7 @@ typedef struct st_mysql_xid MYSQL_XID;
 #define MYSQL_PLUGIN_INTERFACE_VERSION 0x0104
 
 /* MariaDB plugin interface version */
-#define MARIA_PLUGIN_INTERFACE_VERSION 0x010d
+#define MARIA_PLUGIN_INTERFACE_VERSION 0x010e
 
 /*
   The allowable types of plugins
@@ -88,11 +90,13 @@ typedef struct st_mysql_xid MYSQL_XID;
 #define MYSQL_AUDIT_PLUGIN           5
 #define MYSQL_REPLICATION_PLUGIN     6
 #define MYSQL_AUTHENTICATION_PLUGIN  7
-#define MYSQL_MAX_PLUGIN_TYPE_NUM    10  /* The number of plugin types   */
+#define MYSQL_MAX_PLUGIN_TYPE_NUM    12  /* The number of plugin types   */
 
 /* MariaDB plugin types */
 #define MariaDB_PASSWORD_VALIDATION_PLUGIN  8
 #define MariaDB_ENCRYPTION_PLUGIN 9
+#define MariaDB_DATA_TYPE_PLUGIN  10
+#define MariaDB_FUNCTION_PLUGIN 11
 
 /* We use the following strings to define licenses for plugins */
 #define PLUGIN_LICENSE_PROPRIETARY 0
@@ -175,7 +179,7 @@ enum enum_mysql_show_type
   SHOW_ULONGLONG, SHOW_CHAR, SHOW_CHAR_PTR,
   SHOW_ARRAY, SHOW_FUNC, SHOW_DOUBLE,
   SHOW_SINT, SHOW_SLONG, SHOW_SLONGLONG, SHOW_SIMPLE_FUNC,
-  SHOW_always_last
+  SHOW_SIZE_T, SHOW_always_last
 };
 
 /* backward compatibility mapping. */
@@ -645,7 +649,6 @@ int thd_in_lock_tables(const MYSQL_THD thd);
 int thd_tablespace_op(const MYSQL_THD thd);
 long long thd_test_options(const MYSQL_THD thd, long long test_options);
 int thd_sql_command(const MYSQL_THD thd);
-void **thd_ha_data(const MYSQL_THD thd, const struct handlerton *hton);
 void thd_storage_lock_wait(MYSQL_THD thd, long long value);
 int thd_tx_isolation(const MYSQL_THD thd);
 int thd_tx_is_read_only(const MYSQL_THD thd);

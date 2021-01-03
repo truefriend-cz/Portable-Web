@@ -15,7 +15,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 
 #include <mysql/plugin_audit.h>
@@ -58,6 +58,7 @@ static inline void mysql_audit_notify(THD *thd, uint event_class,
 #define mysql_audit_connection_enabled() 0
 #define mysql_audit_table_enabled() 0
 #endif
+extern my_bool mysql_audit_release_required(THD *thd);
 extern void mysql_audit_release(THD *thd);
 
 static inline unsigned int strlen_uint(const char *s)
@@ -253,37 +254,40 @@ void mysql_audit_notify_connection_disconnect(THD *thd, int errcode)
 }
 
 static inline
-void mysql_audit_notify_connection_change_user(THD *thd)
+void mysql_audit_notify_connection_change_user(THD *thd,
+                                               const Security_context *old_ctx)
 {
   if (mysql_audit_connection_enabled())
   {
-    const Security_context *sctx= thd->security_ctx;
     mysql_event_connection event;
 
     event.event_subclass= MYSQL_AUDIT_CONNECTION_CHANGE_USER;
     event.status= thd->get_stmt_da()->is_error() ?
                   thd->get_stmt_da()->sql_errno() : 0;
     event.thread_id= (unsigned long)thd->thread_id;
-    event.user= sctx->user;
-    event.user_length= safe_strlen_uint(sctx->user);
-    event.priv_user= sctx->priv_user;
-    event.priv_user_length= strlen_uint(sctx->priv_user);
-    event.external_user= sctx->external_user;
-    event.external_user_length= safe_strlen_uint(sctx->external_user);
-    event.proxy_user= sctx->proxy_user;
-    event.proxy_user_length= strlen_uint(sctx->proxy_user);
-    event.host= sctx->host;
-    event.host_length= safe_strlen_uint(sctx->host);
-    event.ip= sctx->ip;
-    event.ip_length= safe_strlen_uint(sctx->ip);
+    event.user= old_ctx->user;
+    event.user_length= safe_strlen_uint(old_ctx->user);
+    event.priv_user= old_ctx->priv_user;
+    event.priv_user_length= strlen_uint(old_ctx->priv_user);
+    event.external_user= old_ctx->external_user;
+    event.external_user_length= safe_strlen_uint(old_ctx->external_user);
+    event.proxy_user= old_ctx->proxy_user;
+    event.proxy_user_length= strlen_uint(old_ctx->proxy_user);
+    event.host= old_ctx->host;
+    event.host_length= safe_strlen_uint(old_ctx->host);
+    event.ip= old_ctx->ip;
+    event.ip_length= safe_strlen_uint(old_ctx->ip);
     event.database= thd->db;
 
     mysql_audit_notify(thd, MYSQL_AUDIT_CONNECTION_CLASS, &event);
   }
 }
 
+
 static inline
-void mysql_audit_external_lock(THD *thd, TABLE_SHARE *share, int lock)
+void mysql_audit_external_lock_ex(THD *thd, my_thread_id thread_id,
+    const char *user, const char *host, const char *ip, query_id_t query_id,
+    TABLE_SHARE *share, int lock)
 {
   if (lock != F_UNLCK && mysql_audit_table_enabled())
   {
@@ -292,22 +296,30 @@ void mysql_audit_external_lock(THD *thd, TABLE_SHARE *share, int lock)
 
     event.event_subclass= MYSQL_AUDIT_TABLE_LOCK;
     event.read_only= lock == F_RDLCK;
-    event.thread_id= (unsigned long)thd->thread_id;
-    event.user= sctx->user;
+    event.thread_id= (unsigned long)thread_id;
+    event.user= user;
     event.priv_user= sctx->priv_user;
     event.priv_host= sctx->priv_host;
     event.external_user= sctx->external_user;
     event.proxy_user= sctx->proxy_user;
-    event.host= sctx->host;
-    event.ip= sctx->ip;
+    event.host= host;
+    event.ip= ip;
     event.database= share->db;
     event.table= share->table_name;
     event.new_database= null_clex_str;
     event.new_table= null_clex_str;
-    event.query_id= thd->query_id;
+    event.query_id= query_id;
 
     mysql_audit_notify(thd, MYSQL_AUDIT_TABLE_CLASS, &event);
   }
+}
+
+static inline
+void mysql_audit_external_lock(THD *thd, TABLE_SHARE *share, int lock)
+{
+  mysql_audit_external_lock_ex(thd, thd->thread_id, thd->security_ctx->user,
+      thd->security_ctx->host, thd->security_ctx->ip, thd->query_id,
+      share, lock);
 }
 
 static inline

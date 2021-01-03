@@ -16,7 +16,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA */
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1335  USA */
 
 
 /* This file defines all string functions */
@@ -62,16 +62,11 @@ public:
   longlong val_int();
   double val_real();
   my_decimal *val_decimal(my_decimal *);
-  bool get_date(MYSQL_TIME *ltime, ulonglong fuzzydate)
-  { return get_date_from_string(ltime, fuzzydate); }
+  bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate)
+  { return get_date_from_string(thd, ltime, fuzzydate); }
   const Type_handler *type_handler() const { return string_type_handler(); }
   void left_right_max_length();
   bool fix_fields(THD *thd, Item **ref);
-  void update_null_value()
-  {
-    StringBuffer<MAX_FIELD_WIDTH> tmp;
-    (void) val_str(&tmp);
-  }
 };
 
 
@@ -373,13 +368,12 @@ public:
     {}
   void cleanup()
   {
-    DBUG_ENTER("Item_func_regex::cleanup");
+    DBUG_ENTER("Item_func_regexp_replace::cleanup");
     Item_str_func::cleanup();
     re.cleanup();
     DBUG_VOID_RETURN;
   }
   String *val_str(String *str);
-  bool fix_fields(THD *thd, Item **ref);
   bool fix_length_and_dec();
   const char *func_name() const { return "regexp_replace"; }
   Item *get_copy(THD *thd) { return 0;}
@@ -395,13 +389,12 @@ public:
     {}
   void cleanup()
   {
-    DBUG_ENTER("Item_func_regex::cleanup");
+    DBUG_ENTER("Item_func_regexp_substr::cleanup");
     Item_str_func::cleanup();
     re.cleanup();
     DBUG_VOID_RETURN;
   }
   String *val_str(String *str);
-  bool fix_fields(THD *thd, Item **ref);
   bool fix_length_and_dec();
   const char *func_name() const { return "regexp_substr"; }
   Item *get_copy(THD *thd) { return 0; }
@@ -563,6 +556,7 @@ protected:
 public:
   Item_func_trim(THD *thd, Item *a, Item *b): Item_str_func(thd, a, b) {}
   Item_func_trim(THD *thd, Item *a): Item_str_func(thd, a) {}
+  Sql_mode_dependency value_depends_on_sql_mode() const;
   String *val_str(String *);
   bool fix_length_and_dec();
   const char *func_name() const { return "trim"; }
@@ -600,6 +594,10 @@ class Item_func_ltrim :public Item_func_trim
 public:
   Item_func_ltrim(THD *thd, Item *a, Item *b): Item_func_trim(thd, a, b) {}
   Item_func_ltrim(THD *thd, Item *a): Item_func_trim(thd, a) {}
+  Sql_mode_dependency value_depends_on_sql_mode() const
+  {
+    return Item_func::value_depends_on_sql_mode();
+  }
   String *val_str(String *);
   const char *func_name() const { return "ltrim"; }
   const char *mode_name() const { return "leading"; }
@@ -1133,6 +1131,7 @@ public:
     Item_func_pad(thd, arg1, arg2) {}
   String *val_str(String *);
   const char *func_name() const { return "rpad"; }
+  Sql_mode_dependency value_depends_on_sql_mode() const;
   Item *get_copy(THD *thd)
   { return get_item_copy<Item_func_rpad>(thd, this); }
 };
@@ -1204,7 +1203,7 @@ public:
   bool fix_length_and_dec()
   {
     collation.set(default_charset());
-    max_length=64;
+    fix_char_length(64);
     maybe_null= 1;
     return FALSE;
   }
@@ -1435,11 +1434,19 @@ public:
       /*
         Conversion from and to "binary" is safe.
         Conversion to Unicode is safe.
+        Conversion from an expression with the ASCII repertoire
+        to any character set that can store characters U+0000..U+007F
+        is safe:
+        - All supported multibyte character sets can store U+0000..U+007F
+        - All supported 7bit character sets can store U+0000..U+007F
+          except those marked with MY_CS_NONASCII (e.g. swe7).
         Other kind of conversions are potentially lossy.
       */
       safe= (args[0]->collation.collation == &my_charset_bin ||
              cs == &my_charset_bin ||
-             (cs->state & MY_CS_UNICODE));
+             (cs->state & MY_CS_UNICODE) ||
+             (args[0]->collation.repertoire == MY_REPERTOIRE_ASCII &&
+              (cs->mbmaxlen > 1 || !(cs->state & MY_CS_NONASCII))));
     }
   }
   bool is_json_type() { return args[0]->is_json_type(); }
@@ -1471,11 +1478,11 @@ public:
       return NULL;
     return res;
   }
-  bool get_date(MYSQL_TIME *ltime, ulonglong fuzzydate)
+  bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate)
   {
     if (args[0]->result_type() == STRING_RESULT)
-      return Item_str_func::get_date(ltime, fuzzydate);
-    bool res= args[0]->get_date(ltime, fuzzydate);
+      return Item_str_func::get_date(thd, ltime, fuzzydate);
+    bool res= args[0]->get_date(thd, ltime, fuzzydate);
     if ((null_value= args[0]->null_value))
       return 1;
     return res;
@@ -1662,8 +1669,7 @@ public:
   Item_func_uuid(THD *thd): Item_str_func(thd) {}
   bool fix_length_and_dec()
   {
-    collation.set(system_charset_info,
-                  DERIVATION_COERCIBLE, MY_REPERTOIRE_ASCII);
+    collation.set(DTCollation_numeric());
     fix_char_length(MY_UUID_STRING_LENGTH);
     return FALSE;
   }
@@ -1770,7 +1776,7 @@ public:
   double val_real();
   my_decimal *val_decimal(my_decimal *);
   bool get_dyn_value(THD *thd, DYNAMIC_COLUMN_VALUE *val, String *tmp);
-  bool get_date(MYSQL_TIME *ltime, ulonglong fuzzydate);
+  bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate);
   void print(String *str, enum_query_type query_type);
   Item *get_copy(THD *thd)
   { return get_item_copy<Item_dyncol_get>(thd, this); }
@@ -1801,8 +1807,8 @@ public:
   TABLE *table;
   Item_temptable_rowid(TABLE *table_arg);
   const Type_handler *type_handler() const { return &type_handler_string; }
-  Field *create_tmp_field(bool group, TABLE *table)
-  { return create_table_field_from_handler(table); }
+  Field *create_tmp_field(MEM_ROOT *root, bool group, TABLE *table)
+  { return create_table_field_from_handler(root, table); }
   String *val_str(String *str);
   enum Functype functype() const { return  TEMPTABLE_ROWID; }
   const char *func_name() const { return "<rowid>"; }
@@ -1810,5 +1816,56 @@ public:
   Item *get_copy(THD *thd)
   { return get_item_copy<Item_temptable_rowid>(thd, this); }
 };
+#ifdef WITH_WSREP
+
+#include "wsrep_api.h"
+
+class Item_func_wsrep_last_written_gtid: public Item_str_ascii_func
+{
+  String gtid_str;
+public:
+  Item_func_wsrep_last_written_gtid(THD *thd): Item_str_ascii_func(thd) {}
+  const char *func_name() const { return "wsrep_last_written_gtid"; }
+  String *val_str_ascii(String *);
+  bool fix_length_and_dec()
+  {
+    max_length= WSREP_GTID_STR_LEN;
+    maybe_null= true;
+    return FALSE;
+  }
+  Item *get_copy(THD *thd)
+  { return get_item_copy<Item_func_wsrep_last_written_gtid>(thd, this); }
+};
+
+class Item_func_wsrep_last_seen_gtid: public Item_str_ascii_func
+{
+  String gtid_str;
+public:
+  Item_func_wsrep_last_seen_gtid(THD *thd): Item_str_ascii_func(thd) {}
+  const char *func_name() const { return "wsrep_last_seen_gtid"; }
+  String *val_str_ascii(String *);
+  bool fix_length_and_dec()
+  {
+    max_length= WSREP_GTID_STR_LEN;
+    maybe_null= true;
+    return FALSE;
+  }
+  Item *get_copy(THD *thd)
+  { return get_item_copy<Item_func_wsrep_last_seen_gtid>(thd, this); }
+};
+
+class Item_func_wsrep_sync_wait_upto: public Item_int_func
+{
+  String value;
+public:
+ Item_func_wsrep_sync_wait_upto(THD *thd, Item *a): Item_int_func(thd, a) {}
+ Item_func_wsrep_sync_wait_upto(THD *thd, Item *a, Item* b): Item_int_func(thd, a, b) {}
+  const Type_handler *type_handler() const { return &type_handler_string; }
+  const char *func_name() const { return "wsrep_sync_wait_upto_gtid"; }
+  longlong val_int();
+  Item *get_copy(THD *thd)
+  { return get_item_copy<Item_func_wsrep_sync_wait_upto>(thd, this); }
+};
+#endif /* WITH_WSREP */
 
 #endif /* ITEM_STRFUNC_INCLUDED */

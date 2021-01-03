@@ -1,5 +1,4 @@
 <?php
-
 /**
  * Defines the lexer of the library.
  *
@@ -8,11 +7,20 @@
  * Depends on context to extract lexemes.
  */
 
+declare(strict_types=1);
+
 namespace PhpMyAdmin\SqlParser;
 
 use PhpMyAdmin\SqlParser\Exceptions\LexerException;
+use function define;
+use function defined;
+use function in_array;
+use function mb_strlen;
+use function sprintf;
+use function strlen;
+use function substr;
 
-if (!defined('USE_UTF_STRINGS')) {
+if (! defined('USE_UTF_STRINGS')) {
     // NOTE: In previous versions of PHP (5.5 and older) the default
     // internal encoding is "ISO-8859-1".
     // All `mb_` functions must specify the correct encoding, which is
@@ -33,10 +41,6 @@ if (!defined('USE_UTF_STRINGS')) {
  *
  * The output of the lexer is affected by the context of the SQL statement.
  *
- * @category Lexer
- *
- * @license  https://www.gnu.org/licenses/gpl-2.0.txt GPL-2.0+
- *
  * @see      Context
  */
 class Lexer extends Core
@@ -46,7 +50,7 @@ class Lexer extends Core
      *
      * @var array
      */
-    public static $PARSER_METHODS = array(
+    public static $PARSER_METHODS = [
         // It is best to put the parsers in order of their complexity
         // (ascending) and their occurrence rate (descending).
         //
@@ -70,10 +74,18 @@ class Lexer extends Core
         // They fight over words. `parseUnknown` does not know about
         // keywords.
 
-        'parseDelimiter', 'parseWhitespace', 'parseNumber',
-        'parseComment', 'parseOperator', 'parseBool', 'parseString',
-        'parseSymbol', 'parseKeyword', 'parseLabel', 'parseUnknown',
-    );
+        'parseDelimiter',
+        'parseWhitespace',
+        'parseNumber',
+        'parseComment',
+        'parseOperator',
+        'parseBool',
+        'parseString',
+        'parseSymbol',
+        'parseKeyword',
+        'parseLabel',
+        'parseUnknown',
+    ];
 
     /**
      * The string to be parsed.
@@ -150,8 +162,6 @@ class Lexer extends Core
     }
 
     /**
-     * Constructor.
-     *
      * @param string|UtfString $str       the query to be lexed
      * @param bool             $strict    whether strict mode should be
      *                                    enabled or not
@@ -165,7 +175,7 @@ class Lexer extends Core
 
         // For multi-byte strings, a new instance of `UtfString` is
         // initialized (only if `UtfString` usage is forced.
-        if (!$str instanceof UtfString && USE_UTF_STRINGS && $len !== mb_strlen($str, 'UTF-8')) {
+        if (! $str instanceof UtfString && USE_UTF_STRINGS && $len !== mb_strlen($str, 'UTF-8')) {
             $str = new UtfString($str);
         }
 
@@ -176,7 +186,7 @@ class Lexer extends Core
 
         // Setting the delimiter.
         $this->setDelimiter(
-            !empty($delimiter) ? $delimiter : static::$DEFAULT_DELIMITER
+            ! empty($delimiter) ? $delimiter : static::$DEFAULT_DELIMITER
         );
 
         $this->lex();
@@ -225,7 +235,9 @@ class Lexer extends Core
             $token = null;
 
             foreach (static::$PARSER_METHODS as $method) {
-                if ($token = $this->$method()) {
+                $token = $this->$method();
+
+                if ($token) {
                     break;
                 }
             }
@@ -285,7 +297,9 @@ class Lexer extends Core
                 // Skipping last R (from `delimiteR`) and whitespaces between
                 // the keyword `DELIMITER` and the actual delimiter.
                 $pos = ++$this->last;
-                if (($token = $this->parseWhitespace()) !== null) {
+                $token = $this->parseWhitespace();
+
+                if ($token !== null) {
                     $token->position = $pos;
                     $list->tokens[$list->count++] = $token;
                 }
@@ -299,12 +313,16 @@ class Lexer extends Core
                     );
                     continue;
                 }
+
                 $pos = $this->last + 1;
 
                 // Parsing the delimiter.
                 $this->delimiter = null;
                 $delimiterLen = 0;
-                while (++$this->last < $this->len && !Context::isWhitespace($this->str[$this->last]) && $delimiterLen < 15) {
+                while (++$this->last < $this->len
+                    && ! Context::isWhitespace($this->str[$this->last])
+                    && $delimiterLen < 15
+                ) {
                     $this->delimiter .= $this->str[$this->last];
                     ++$delimiterLen;
                 }
@@ -335,6 +353,41 @@ class Lexer extends Core
 
         // Saving the tokens list.
         $this->list = $list;
+
+        $this->solveAmbiguityOnStarOperator();
+    }
+
+    /**
+     * Resolves the ambiguity when dealing with the "*" operator.
+     *
+     * In SQL statements, the "*" operator can be an arithmetic operator (like in 2*3) or an SQL wildcard (like in
+     * SELECT a.* FROM ...). To solve this ambiguity, the solution is to find the next token, excluding whitespaces and
+     * comments, right after the "*" position. The "*" is for sure an SQL wildcard if the next token found is any of:
+     * - "FROM" (the FROM keyword like in "SELECT * FROM...");
+     * - "USING" (the USING keyword like in "DELETE table_name.* USING...");
+     * - "," (a comma separator like in "SELECT *, field FROM...");
+     * - ")" (a closing parenthesis like in "COUNT(*)").
+     * This methods will change the flag of the "*" tokens when any of those condition above is true. Otherwise, the
+     * default flag (arithmetic) will be kept.
+     *
+     * @return void
+     */
+    private function solveAmbiguityOnStarOperator()
+    {
+        $iBak = $this->list->idx;
+        while (($starToken = $this->list->getNextOfTypeAndValue(Token::TYPE_OPERATOR, '*')) !== null) {
+            // getNext() already gets rid of whitespaces and comments.
+            $next = $this->list->getNext();
+
+            if ($next !== null) {
+                if (($next->type === Token::TYPE_KEYWORD && in_array($next->value, ['FROM', 'USING'], true))
+                    || ($next->type === Token::TYPE_OPERATOR && in_array($next->value, [',', ')'], true))
+                ) {
+                    $starToken->flags = Token::FLAG_OPERATOR_SQL;
+                }
+            }
+        }
+        $this->list->idx = $iBak;
     }
 
     /**
@@ -345,13 +398,15 @@ class Lexer extends Core
      * @param int    $pos  the position of the character
      * @param int    $code the code of the error
      *
-     * @throws LexerException throws the exception, if strict mode is enabled
+     * @throws LexerException throws the exception, if strict mode is enabled.
      */
     public function error($msg, $str = '', $pos = 0, $code = 0)
     {
         $error = new LexerException(
             Translator::gettext($msg),
-            $str, $pos, $code
+            $str,
+            $pos,
+            $code
         );
         parent::error($error);
     }
@@ -359,7 +414,7 @@ class Lexer extends Core
     /**
      * Parses a keyword.
      *
-     * @return null|Token
+     * @return Token|null
      */
     public function parseKeyword()
     {
@@ -394,15 +449,16 @@ class Lexer extends Core
                     --$j; // The size of the keyword didn't increase.
                     continue;
                 }
+
                 $lastSpace = true;
             } else {
                 $lastSpace = false;
             }
 
             $token .= $this->str[$this->last];
-            if (($this->last + 1 === $this->len || Context::isSeparator($this->str[$this->last + 1]))
-                && $flags = Context::isKeyword($token)
-            ) {
+            $flags = Context::isKeyword($token);
+
+            if (($this->last + 1 === $this->len || Context::isSeparator($this->str[$this->last + 1])) && $flags) {
                 $ret = new Token($token, Token::TYPE_KEYWORD, $flags);
                 $iEnd = $this->last;
 
@@ -420,7 +476,7 @@ class Lexer extends Core
     /**
      * Parses a label.
      *
-     * @return null|Token
+     * @return Token|null
      */
     public function parseLabel()
     {
@@ -454,6 +510,7 @@ class Lexer extends Core
                 // Any other separator
                 break;
             }
+
             $token .= $this->str[$this->last];
         }
 
@@ -465,7 +522,7 @@ class Lexer extends Core
     /**
      * Parses an operator.
      *
-     * @return null|Token
+     * @return Token|null
      */
     public function parseOperator()
     {
@@ -487,7 +544,9 @@ class Lexer extends Core
 
         for ($j = 1; $j < Context::OPERATOR_MAX_LENGTH && $this->last < $this->len; ++$j, ++$this->last) {
             $token .= $this->str[$this->last];
-            if ($flags = Context::isOperator($token)) {
+            $flags = Context::isOperator($token);
+
+            if ($flags) {
                 $ret = new Token($token, Token::TYPE_OPERATOR, $flags);
                 $iEnd = $this->last;
             }
@@ -501,13 +560,13 @@ class Lexer extends Core
     /**
      * Parses a whitespace.
      *
-     * @return null|Token
+     * @return Token|null
      */
     public function parseWhitespace()
     {
         $token = $this->str[$this->last];
 
-        if (!Context::isWhitespace($token)) {
+        if (! Context::isWhitespace($token)) {
             return null;
         }
 
@@ -523,7 +582,7 @@ class Lexer extends Core
     /**
      * Parses a comment.
      *
-     * @return null|Token
+     * @return Token|null
      */
     public function parseComment()
     {
@@ -532,12 +591,12 @@ class Lexer extends Core
 
         // Bash style comments. (#comment\n)
         if (Context::isComment($token)) {
-            while (
-                ++$this->last < $this->len
+            while (++$this->last < $this->len
                 && $this->str[$this->last] !== "\n"
             ) {
                 $token .= $this->str[$this->last];
             }
+
             // Include trailing \n as whitespace token
             if ($this->last < $this->len) {
                 --$this->last;
@@ -550,6 +609,19 @@ class Lexer extends Core
         if (++$this->last < $this->len) {
             $token .= $this->str[$this->last];
             if (Context::isComment($token)) {
+                // There might be a conflict with "*" operator here, when string is "*/*".
+                // This can occurs in the following statements:
+                // - "SELECT */* comment */ FROM ..."
+                // - "SELECT 2*/* comment */3 AS `six`;"
+                $next = $this->last+1;
+                if (($next < $this->len) && $this->str[$next] === '*') {
+                    // Conflict in "*/*": first "*" was not for ending a comment.
+                    // Stop here and let other parsing method define the true behavior of that first star.
+                    $this->last = $iBak;
+
+                    return null;
+                }
+
                 $flags = Token::FLAG_COMMENT_C;
 
                 // This comment already ended. It may be a part of a
@@ -565,13 +637,13 @@ class Lexer extends Core
                     $flags |= Token::FLAG_COMMENT_MYSQL_CMD;
                     $token .= $this->str[++$this->last];
 
-                    while (
-                        ++$this->last < $this->len
+                    while (++$this->last < $this->len
                         && $this->str[$this->last] >= '0'
                         && $this->str[$this->last] <= '9'
                     ) {
                         $token .= $this->str[$this->last];
                     }
+
                     --$this->last;
 
                     // We split this comment and parse only its beginning
@@ -580,8 +652,7 @@ class Lexer extends Core
                 }
 
                 // Parsing the comment.
-                while (
-                    ++$this->last < $this->len
+                while (++$this->last < $this->len
                     && (
                         $this->str[$this->last - 1] !== '*'
                         || $this->str[$this->last] !== '/'
@@ -607,16 +678,17 @@ class Lexer extends Core
             --$this->last;
             $end = true;
         }
+
         if (Context::isComment($token, $end)) {
             // Checking if this comment did not end already (```--\n```).
             if ($this->str[$this->last] !== "\n") {
-                while (
-                    ++$this->last < $this->len
+                while (++$this->last < $this->len
                     && $this->str[$this->last] !== "\n"
                 ) {
                     $token .= $this->str[$this->last];
                 }
             }
+
             // Include trailing \n as whitespace token
             if ($this->last < $this->len) {
                 --$this->last;
@@ -633,7 +705,7 @@ class Lexer extends Core
     /**
      * Parses a boolean.
      *
-     * @return null|Token
+     * @return Token|null
      */
     public function parseBool()
     {
@@ -664,7 +736,7 @@ class Lexer extends Core
     /**
      * Parses a number.
      *
-     * @return null|Token
+     * @return Token|null
      */
     public function parseNumber()
     {
@@ -704,6 +776,7 @@ class Lexer extends Core
         //
         // Valid final states are: 2, 3, 4 and 6. Any parsing that finished in a
         // state other than these is invalid.
+        // Also, negative states are invalid states.
         $iBak = $this->last;
         $token = '';
         $flags = 0;
@@ -733,8 +806,7 @@ class Lexer extends Core
                 }
             } elseif ($state === 2) {
                 $flags |= Token::FLAG_NUMBER_HEX;
-                if (
-                    !(
+                if (! (
                         ($this->str[$this->last] >= '0' && $this->str[$this->last] <= '9')
                         || ($this->str[$this->last] >= 'A' && $this->str[$this->last] <= 'F')
                         || ($this->str[$this->last] >= 'a' && $this->str[$this->last] <= 'f')
@@ -747,6 +819,10 @@ class Lexer extends Core
                     $state = 4;
                 } elseif ($this->str[$this->last] === 'e' || $this->str[$this->last] === 'E') {
                     $state = 5;
+                } elseif (($this->str[$this->last] >= 'a' && $this->str[$this->last] <= 'z')
+                    || ($this->str[$this->last] >= 'A' && $this->str[$this->last] <= 'Z')) {
+                    // A number can't be directly followed by a letter
+                    $state = -$state;
                 } elseif ($this->str[$this->last] < '0' || $this->str[$this->last] > '9') {
                     // Just digits and `.`, `e` and `E` are valid characters.
                     break;
@@ -755,6 +831,10 @@ class Lexer extends Core
                 $flags |= Token::FLAG_NUMBER_FLOAT;
                 if ($this->str[$this->last] === 'e' || $this->str[$this->last] === 'E') {
                     $state = 5;
+                } elseif (($this->str[$this->last] >= 'a' && $this->str[$this->last] <= 'z')
+                    || ($this->str[$this->last] >= 'A' && $this->str[$this->last] <= 'Z')) {
+                    // A number can't be directly followed by a letter
+                    $state = -$state;
                 } elseif ($this->str[$this->last] < '0' || $this->str[$this->last] > '9') {
                     // Just digits, `e` and `E` are valid characters.
                     break;
@@ -765,6 +845,10 @@ class Lexer extends Core
                     || ($this->str[$this->last] >= '0' && $this->str[$this->last] <= '9')
                 ) {
                     $state = 6;
+                } elseif (($this->str[$this->last] >= 'a' && $this->str[$this->last] <= 'z')
+                    || ($this->str[$this->last] >= 'A' && $this->str[$this->last] <= 'Z')) {
+                    // A number can't be directly followed by a letter
+                    $state = -$state;
                 } else {
                     break;
                 }
@@ -791,8 +875,10 @@ class Lexer extends Core
             } elseif ($state === 9) {
                 break;
             }
+
             $token .= $this->str[$this->last];
         }
+
         if ($state === 2 || $state === 3
             || ($token !== '.' && $state === 4)
             || $state === 6 || $state === 9
@@ -801,6 +887,7 @@ class Lexer extends Core
 
             return new Token($token, Token::TYPE_NUMBER, $flags);
         }
+
         $this->last = $iBak;
 
         return null;
@@ -811,14 +898,19 @@ class Lexer extends Core
      *
      * @param string $quote additional starting symbol
      *
-     * @return null|Token
+     * @return Token|null
+     *
+     * @throws LexerException
      */
     public function parseString($quote = '')
     {
         $token = $this->str[$this->last];
-        if (!($flags = Context::isString($token)) && $token !== $quote) {
+        $flags = Context::isString($token);
+
+        if (! $flags && $token !== $quote) {
             return null;
         }
+
         $quote = $token;
 
         while (++$this->last < $this->len) {
@@ -833,6 +925,7 @@ class Lexer extends Core
                 if ($this->str[$this->last] === $quote) {
                     break;
                 }
+
                 $token .= $this->str[$this->last];
             }
         }
@@ -856,12 +949,16 @@ class Lexer extends Core
     /**
      * Parses a symbol.
      *
-     * @return null|Token
+     * @return Token|null
+     *
+     * @throws LexerException
      */
     public function parseSymbol()
     {
         $token = $this->str[$this->last];
-        if (!($flags = Context::isSymbol($token))) {
+        $flags = Context::isSymbol($token);
+
+        if (! $flags) {
             return null;
         }
 
@@ -872,7 +969,7 @@ class Lexer extends Core
                 $flags |= Token::FLAG_SYMBOL_SYSTEM;
             }
         } elseif ($flags & Token::FLAG_SYMBOL_PARAMETER) {
-            if ($this->last + 1 < $this->len) {
+            if ($token !== '?' && $this->last + 1 < $this->len) {
                 ++$this->last;
             }
         } else {
@@ -882,8 +979,12 @@ class Lexer extends Core
         $str = null;
 
         if ($this->last < $this->len) {
-            if (($str = $this->parseString('`')) === null) {
-                if (($str = $this->parseUnknown()) === null) {
+            $str = $this->parseString('`');
+
+            if ($str === null) {
+                $str = $this->parseUnknown();
+
+                if ($str === null) {
                     $this->error(
                         'Variable name was expected.',
                         $this->str[$this->last],
@@ -903,7 +1004,7 @@ class Lexer extends Core
     /**
      * Parses unknown parts of the query.
      *
-     * @return null|Token
+     * @return Token|null
      */
     public function parseUnknown()
     {
@@ -912,9 +1013,17 @@ class Lexer extends Core
             return null;
         }
 
-        while (++$this->last < $this->len && !Context::isSeparator($this->str[$this->last])) {
+        while (++$this->last < $this->len && ! Context::isSeparator($this->str[$this->last])) {
             $token .= $this->str[$this->last];
+
+            // Test if end of token equals the current delimiter. If so, remove it from the token.
+            if (substr($token, -$this->delimiterLen) === $this->delimiter) {
+                $token = substr($token, 0, -$this->delimiterLen);
+                $this->last -= $this->delimiterLen - 1;
+                break;
+            }
         }
+
         --$this->last;
 
         return new Token($token);
@@ -923,7 +1032,7 @@ class Lexer extends Core
     /**
      * Parses the delimiter of the query.
      *
-     * @return null|Token
+     * @return Token|null
      */
     public function parseDelimiter()
     {
@@ -933,6 +1042,7 @@ class Lexer extends Core
             if ($this->delimiter[$idx] !== $this->str[$this->last + $idx]) {
                 return null;
             }
+
             ++$idx;
         }
 

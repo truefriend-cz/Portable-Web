@@ -11,18 +11,19 @@
 
    You should have received a copy of the GNU General Public License along
    with this program; if not, write to the Free Software Foundation, Inc.,
-   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA. */
-
-#include <my_config.h>
+   51 Franklin Street, Fifth Floor, Boston, MA 02110-1335 USA. */
 
 #ifndef WSREP_VAR_H
 #define WSREP_VAR_H
 
+#include <my_config.h>
+
 #ifdef WITH_WSREP
 
-#define WSREP_CLUSTER_NAME        "my_wsrep_cluster"
-#define WSREP_NODE_INCOMING_AUTO  "AUTO"
-#define WSREP_START_POSITION_ZERO "00000000-0000-0000-0000-000000000000:-1"
+#define WSREP_CLUSTER_NAME              "my_wsrep_cluster"
+#define WSREP_NODE_INCOMING_AUTO        "AUTO"
+#define WSREP_START_POSITION_ZERO       "00000000-0000-0000-0000-000000000000:-1"
+#define WSREP_START_POSITION_ZERO_GTID  "00000000-0000-0000-0000-000000000000:-1,0-0-0"
 
 // MySQL variables funcs
 
@@ -90,13 +91,22 @@ extern bool wsrep_slave_threads_update       UPDATE_ARGS;
 extern bool wsrep_desync_check               CHECK_ARGS;
 extern bool wsrep_desync_update              UPDATE_ARGS;
 
+extern bool wsrep_trx_fragment_size_check    CHECK_ARGS;
+extern bool wsrep_trx_fragment_size_update   UPDATE_ARGS;
+
+extern bool wsrep_trx_fragment_unit_update   UPDATE_ARGS;
+
 extern bool wsrep_max_ws_size_check          CHECK_ARGS;
 extern bool wsrep_max_ws_size_update         UPDATE_ARGS;
+
 extern bool wsrep_reject_queries_update      UPDATE_ARGS;
+
+extern bool wsrep_debug_update               UPDATE_ARGS;
+
+extern bool wsrep_gtid_seq_no_check          CHECK_ARGS;
 
 #else  /* WITH_WSREP */
 
-#define WSREP_NONE
 #define wsrep_provider_init(X)
 #define wsrep_init_vars() (0)
 #define wsrep_start_position_init(X)

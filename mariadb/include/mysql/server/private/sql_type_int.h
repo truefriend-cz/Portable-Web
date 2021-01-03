@@ -1,5 +1,4 @@
-/* Copyright (c) 2006, 2010, Oracle and/or its affiliates.
-   Copyright (c) 2011, 2016, MariaDB
+/* Copyright (c) 2018, MariaDB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -12,17 +11,99 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1335  USA */
 
 #ifndef SQL_TYPE_INT_INCLUDED
 #define SQL_TYPE_INT_INCLUDED
 
+#include "my_bit.h" // my_count_bits()
 
-// A longlong/ulonglong hybrid. Good to store results of val_int().
-class Longlong_hybrid
+
+class Null_flag
+{
+protected:
+  bool m_is_null;
+public:
+  bool is_null() const { return m_is_null; }
+  Null_flag(bool is_null) :m_is_null(is_null) { }
+};
+
+
+class Longlong
 {
 protected:
   longlong m_value;
+public:
+  longlong value() const { return m_value; }
+  Longlong(longlong nr) :m_value(nr) { }
+};
+
+
+class Longlong_null: public Longlong, public Null_flag
+{
+public:
+  Longlong_null(longlong nr, bool is_null)
+   :Longlong(nr), Null_flag(is_null)
+  { }
+  explicit Longlong_null()
+   :Longlong(0), Null_flag(true)
+  { }
+  explicit Longlong_null(longlong nr)
+   :Longlong(nr), Null_flag(false)
+  { }
+  Longlong_null operator|(const Longlong_null &other) const
+  {
+    if (is_null() || other.is_null())
+      return Longlong_null();
+    return Longlong_null(value() | other.value());
+  }
+  Longlong_null operator&(const Longlong_null &other) const
+  {
+    if (is_null() || other.is_null())
+      return Longlong_null();
+    return Longlong_null(value() & other.value());
+  }
+  Longlong_null operator^(const Longlong_null &other) const
+  {
+    if (is_null() || other.is_null())
+      return Longlong_null();
+    return Longlong_null((longlong) (value() ^ other.value()));
+  }
+  Longlong_null operator~() const
+  {
+    if (is_null())
+      return *this;
+    return Longlong_null((longlong) ~ (ulonglong) value());
+  }
+  Longlong_null operator<<(const Longlong_null &llshift) const
+  {
+    if (is_null() || llshift.is_null())
+      return Longlong_null();
+    uint shift= (uint) llshift.value();
+    ulonglong res= ((ulonglong) value()) << shift;
+    return Longlong_null(shift < sizeof(longlong) * 8 ? (longlong) res : 0);
+  }
+  Longlong_null operator>>(const Longlong_null &llshift) const
+  {
+    if (is_null() || llshift.is_null())
+      return Longlong_null();
+    uint shift= (uint) llshift.value();
+    ulonglong res= ((ulonglong) value()) >> shift;
+    return Longlong_null(shift < sizeof(longlong) * 8 ? (longlong) res : 0);
+  }
+  Longlong_null bit_count() const
+  {
+    if (is_null())
+      return *this;
+    return Longlong_null((longlong) my_count_bits((ulonglong) value()));
+  }
+};
+
+
+// A longlong/ulonglong hybrid. Good to store results of val_int().
+class Longlong_hybrid: public Longlong
+{
+protected:
   bool m_unsigned;
   int cmp_signed(const Longlong_hybrid& other) const
   {
@@ -35,9 +116,8 @@ protected:
   }
 public:
   Longlong_hybrid(longlong nr, bool unsigned_flag)
-   :m_value(nr), m_unsigned(unsigned_flag)
+   :Longlong(nr), m_unsigned(unsigned_flag)
   { }
-  longlong value() const { return m_value; }
   bool is_unsigned() const { return m_unsigned; }
   bool is_unsigned_outside_of_signed_range() const
   {
@@ -83,6 +163,38 @@ public:
     */
     return cmp_signed(other);
   }
+  bool operator==(const Longlong_hybrid &nr) const
+  {
+    return cmp(nr) == 0;
+  }
+  bool operator==(ulonglong nr) const
+  {
+    return cmp(Longlong_hybrid((longlong) nr, true)) == 0;
+  }
+  bool operator==(uint nr) const
+  {
+    return cmp(Longlong_hybrid((longlong) nr, true)) == 0;
+  }
+  bool operator==(longlong nr) const
+  {
+    return cmp(Longlong_hybrid(nr, false)) == 0;
+  }
+  bool operator==(int nr) const
+  {
+    return cmp(Longlong_hybrid(nr, false)) == 0;
+  }
 };
+
+
+class Longlong_hybrid_null: public Longlong_hybrid,
+                            public Null_flag
+{
+public:
+  Longlong_hybrid_null(const Longlong_null &nr, bool unsigned_flag)
+   :Longlong_hybrid(nr.value(), unsigned_flag),
+    Null_flag(nr.is_null())
+  { }
+};
+
 
 #endif // SQL_TYPE_INT_INCLUDED

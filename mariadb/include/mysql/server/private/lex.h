@@ -15,7 +15,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 
 /* This file includes all reserved words and functions */
@@ -23,7 +23,7 @@
 #include "lex_symbol.h"
 
 SYM_GROUP sym_group_common= {"", ""};
-SYM_GROUP sym_group_geom= {"Spatial extentions", "HAVE_SPATIAL"};
+SYM_GROUP sym_group_geom= {"Spatial extensions", "HAVE_SPATIAL"};
 SYM_GROUP sym_group_rtree= {"RTree keys", "HAVE_RTREE_KEYS"};
 
 /* We don't want to include sql_yacc.h into gen_lex_hash */
@@ -43,6 +43,9 @@ SYM_GROUP sym_group_rtree= {"RTree keys", "HAVE_RTREE_KEYS"};
   NOTE! The symbol tables should be the same regardless of what features
   are compiled into the server. Don't add ifdef'ed symbols to the
   lists
+  NOTE!!
+  If you add or delete symbols from this file, you must also update results for
+  the perfschema.start_server_low_digest_sql_length test!
 */
 
 static SYMBOL symbols[] = {
@@ -55,6 +58,7 @@ static SYMBOL symbols[] = {
   { ">>",		SYM(SHIFT_RIGHT)},
   { "<=>",		SYM(EQUAL_SYM)},
   { "ACCESSIBLE",	SYM(ACCESSIBLE_SYM)},
+  { "ACCOUNT",		SYM(ACCOUNT_SYM)},
   { "ACTION",		SYM(ACTION)},
   { "ADD",		SYM(ADD)},
   { "ADMIN",            SYM(ADMIN_SYM)},
@@ -173,7 +177,7 @@ static SYMBOL symbols[] = {
   { "DAY_MICROSECOND",	SYM(DAY_MICROSECOND_SYM)},
   { "DAY_MINUTE",	SYM(DAY_MINUTE_SYM)},
   { "DAY_SECOND",	SYM(DAY_SECOND_SYM)},
-  { "DEALLOCATE",       SYM(DEALLOCATE_SYM)},     
+  { "DEALLOCATE",       SYM(DEALLOCATE_SYM)},
   { "DEC",		SYM(DECIMAL_SYM)},
   { "DECIMAL",		SYM(DECIMAL_SYM)},
   { "DECLARE",          SYM(DECLARE_MARIADB_SYM)},
@@ -230,6 +234,7 @@ static SYMBOL symbols[] = {
   { "EXISTS",		SYM(EXISTS)},
   { "EXIT",             SYM(EXIT_MARIADB_SYM)},
   { "EXPANSION",	SYM(EXPANSION_SYM)},
+  { "EXPIRE",		SYM(EXPIRE_SYM)},
   { "EXPORT",           SYM(EXPORT_SYM)},
   { "EXPLAIN",		SYM(DESCRIBE)},
   { "EXTENDED",		SYM(EXTENDED_SYM)},
@@ -237,6 +242,7 @@ static SYMBOL symbols[] = {
   { "FALSE",		SYM(FALSE_SYM)},
   { "FAST",		SYM(FAST_SYM)},
   { "FAULTS",  SYM(FAULTS_SYM)},
+  { "FEDERATED", SYM(FEDERATED_SYM)},
   { "FETCH",            SYM(FETCH_SYM)},
   { "FIELDS",		SYM(COLUMNS)},
   { "FILE",		SYM(FILE_SYM)},
@@ -259,8 +265,6 @@ static SYMBOL symbols[] = {
   { "FUNCTION",		SYM(FUNCTION_SYM)},
   { "GENERAL",          SYM(GENERAL)},
   { "GENERATED",        SYM(GENERATED_SYM)},
-  { "GEOMETRY",		SYM(GEOMETRY_SYM)},
-  { "GEOMETRYCOLLECTION",SYM(GEOMETRYCOLLECTION)},
   { "GET_FORMAT",       SYM(GET_FORMAT)},
   { "GET",              SYM(GET_SYM)},
   { "GLOBAL",		SYM(GLOBAL_SYM)},
@@ -341,7 +345,6 @@ static SYMBOL symbols[] = {
   { "LIMIT",		SYM(LIMIT)},
   { "LINEAR",		SYM(LINEAR_SYM)},
   { "LINES",		SYM(LINES)},
-  { "LINESTRING",	SYM(LINESTRING)},
   { "LIST",             SYM(LIST_SYM)},
   { "LOAD",		SYM(LOAD)},
   { "LOCAL",		SYM(LOCAL_SYM)},
@@ -406,10 +409,8 @@ static SYMBOL symbols[] = {
   { "MODE",		SYM(MODE_SYM)},
   { "MODIFIES",		SYM(MODIFIES_SYM)},
   { "MODIFY",		SYM(MODIFY_SYM)},
+  { "MONITOR",          SYM(MONITOR_SYM)},
   { "MONTH",		SYM(MONTH_SYM)},
-  { "MULTILINESTRING",	SYM(MULTILINESTRING)},
-  { "MULTIPOINT",	SYM(MULTIPOINT)},
-  { "MULTIPOLYGON",	SYM(MULTIPOLYGON)},
   { "MUTEX",  SYM(MUTEX_SYM)},
   { "MYSQL",            SYM(MYSQL_SYM)},
   { "MYSQL_ERRNO",      SYM(MYSQL_ERRNO_SYM)},
@@ -418,6 +419,7 @@ static SYMBOL symbols[] = {
   { "NATIONAL",		SYM(NATIONAL_SYM)},
   { "NATURAL",		SYM(NATURAL)},
   { "NCHAR",		SYM(NCHAR_SYM)},
+  { "NEVER",		SYM(NEVER_SYM)},
   { "NEW",              SYM(NEW_SYM)},
   { "NEXT",		SYM(NEXT_SYM)},
   { "NEXTVAL",		SYM(NEXTVAL_SYM)},
@@ -456,6 +458,7 @@ static SYMBOL symbols[] = {
   { "OUTER",		SYM(OUTER)},
   { "OUTFILE",		SYM(OUTFILE)},
   { "OVER",             SYM(OVER_SYM)},
+  { "OVERLAPS",         SYM(OVERLAPS_SYM)},
   { "OWNER",		SYM(OWNER_SYM)},
   { "PACKAGE",          SYM(PACKAGE_MARIADB_SYM)},
   { "PACK_KEYS",	SYM(PACK_KEYS_SYM)},
@@ -473,9 +476,8 @@ static SYMBOL symbols[] = {
   { "PHASE",            SYM(PHASE_SYM)},
   { "PLUGIN",           SYM(PLUGIN_SYM)},
   { "PLUGINS",          SYM(PLUGINS_SYM)},
-  { "POINT",		SYM(POINT_SYM)},
-  { "POLYGON",		SYM(POLYGON)},
   { "PORT",		SYM(PORT_SYM)},
+  { "PORTION",		SYM(PORTION_SYM)},
   { "PRECEDES",         SYM(PRECEDES_SYM)},
   { "PRECEDING",        SYM(PRECEDING_SYM)},
   { "PRECISION",	SYM(PRECISION)},
@@ -524,6 +526,10 @@ static SYMBOL symbols[] = {
   { "REPAIR",		SYM(REPAIR)},
   { "REPEATABLE",	SYM(REPEATABLE_SYM)},
   { "REPLACE",		SYM(REPLACE)},
+  { "REPLAY",           SYM(REPLAY_SYM)},
+  { "REPLICA",      SYM(SLAVE)},
+  { "REPLICAS",     SYM(SLAVES)},
+  { "REPLICA_POS",  SYM(SLAVE_POS_SYM)},
   { "REPLICATION",	SYM(REPLICATION)},
   { "REPEAT",           SYM(REPEAT_SYM)},
   { "REQUIRE",	        SYM(REQUIRE_SYM)},
@@ -589,6 +595,7 @@ static SYMBOL symbols[] = {
   { "SONAME",		SYM(SONAME_SYM)},
   { "SOUNDS",		SYM(SOUNDS_SYM)},
   { "SOURCE",           SYM(SOURCE_SYM)},
+  { "STAGE",            SYM(STAGE_SYM)},
   { "STORED",           SYM(STORED_SYM)},
   { "SPATIAL",		SYM(SPATIAL_SYM)},
   { "SPECIFIC",         SYM(SPECIFIC_SYM)},
@@ -658,6 +665,7 @@ static SYMBOL symbols[] = {
   { "TRAILING",		SYM(TRAILING)},
   { "TRANSACTION",	SYM(TRANSACTION_SYM)},
   { "TRANSACTIONAL",	SYM(TRANSACTIONAL_SYM)},
+  { "THREADS",          SYM(THREADS_SYM)},
   { "TRIGGER",          SYM(TRIGGER_SYM)},
   { "TRIGGERS",         SYM(TRIGGERS_SYM)},
   { "TRUE",		SYM(TRUE_SYM)},
@@ -700,6 +708,7 @@ static SYMBOL symbols[] = {
   { "VIA",              SYM(VIA_SYM)},
   { "VIEW",		SYM(VIEW_SYM)},
   { "VIRTUAL",          SYM(VIRTUAL_SYM)},
+  { "VISIBLE",          SYM(VISIBLE_SYM)},
   { "VERSIONING",       SYM(VERSIONING_SYM)},
   { "WAIT",		SYM(WAIT_SYM)},
   { "WARNINGS",		SYM(WARNINGS)},
@@ -708,7 +717,7 @@ static SYMBOL symbols[] = {
   { "WHEN",		SYM(WHEN_SYM)},
   { "WHERE",		SYM(WHERE)},
   { "WHILE",            SYM(WHILE_SYM)},
-  { "WINDOW",           SYM(WINDOW_SYM)}, 
+  { "WINDOW",           SYM(WINDOW_SYM)},
   { "WITH",		SYM(WITH)},
   { "WITHIN",   SYM(WITHIN)},
   { "WITHOUT",          SYM(WITHOUT)},
@@ -744,6 +753,8 @@ static SYMBOL sql_functions[] = {
   { "EXTRACT",		SYM(EXTRACT_SYM)},
   { "FIRST_VALUE",      SYM(FIRST_VALUE_SYM)},
   { "GROUP_CONCAT",	SYM(GROUP_CONCAT_SYM)},
+  { "JSON_ARRAYAGG",	SYM(JSON_ARRAYAGG_SYM)},
+  { "JSON_OBJECTAGG",	SYM(JSON_OBJECTAGG_SYM)},
   { "LAG",              SYM(LAG_SYM)},
   { "LEAD",             SYM(LEAD_SYM)},
   { "MAX",		SYM(MAX_SYM)},

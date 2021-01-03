@@ -13,7 +13,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1335  USA */
 
 #ifndef SQL_BASE_INCLUDED
 #define SQL_BASE_INCLUDED
@@ -55,6 +55,13 @@ enum enum_resolution_type {
   RESOLVED_BEHIND_ALIAS,
   RESOLVED_WITH_NO_ALIAS,
   RESOLVED_AGAINST_ALIAS
+};
+
+/* Argument to flush_tables() of what to flush */
+enum flush_tables_type {
+  FLUSH_ALL,
+  FLUSH_NON_TRANS_TABLES,
+  FLUSH_SYS_TABLES
 };
 
 enum find_item_error_report_type {REPORT_ALL_ERRORS, REPORT_EXCEPT_NOT_FOUND,
@@ -118,6 +125,11 @@ TABLE *open_ltable(THD *thd, TABLE_LIST *table_list, thr_lock_type update,
 */
 #define MYSQL_OPEN_IGNORE_REPAIR                0x10000
 
+/**
+   Don't call decide_logging_format. Used for statistic tables etc
+*/
+#define MYSQL_OPEN_IGNORE_LOGGING_FORMAT        0x20000
+
 /** Please refer to the internals manual. */
 #define MYSQL_OPEN_REOPEN  (MYSQL_OPEN_IGNORE_FLUSH |\
                             MYSQL_OPEN_IGNORE_GLOBAL_READ_LOCK |\
@@ -148,7 +160,7 @@ TABLE_LIST *find_table_in_list(TABLE_LIST *table,
                                TABLE_LIST *TABLE_LIST::*link,
                                const LEX_CSTRING *db_name,
                                const LEX_CSTRING *table_name);
-void close_thread_tables(THD *thd);
+int close_thread_tables(THD *thd);
 void switch_to_nullable_trigger_fields(List<Item> &items, TABLE *);
 void switch_defaults_to_nullable_trigger_fields(TABLE *table);
 bool fill_record_n_invoke_before_triggers(THD *thd, TABLE *table,
@@ -168,7 +180,8 @@ bool insert_fields(THD *thd, Name_resolution_context *context,
 void make_leaves_list(THD *thd, List<TABLE_LIST> &list, TABLE_LIST *tables,
                       bool full_table_list, TABLE_LIST *boundary);
 int setup_wild(THD *thd, TABLE_LIST *tables, List<Item> &fields,
-	       List<Item> *sum_func_list, uint wild_num, uint * hidden_bit_fields);
+	       List<Item> *sum_func_list, SELECT_LEX *sl);
+int setup_returning_fields(THD* thd, TABLE_LIST* table_list);
 bool setup_fields(THD *thd, Ref_ptr_array ref_pointer_array,
                   List<Item> &item, enum_column_usage column_usage,
                   List<Item> *sum_func_list, List<Item> *pre_fix,
@@ -210,8 +223,8 @@ bool setup_tables_and_check_access(THD *thd,
                                    TABLE_LIST *tables,
                                    List<TABLE_LIST> &leaves, 
                                    bool select_insert,
-                                   ulong want_access_first,
-                                   ulong want_access,
+                                   privilege_t want_access_first,
+                                   privilege_t want_access,
                                    bool full_table_list);
 bool wait_while_table_is_used(THD *thd, TABLE *table,
                               enum ha_extra_function function);
@@ -240,8 +253,9 @@ lock_table_names(THD *thd, TABLE_LIST *table_list,
                           table_list_end, lock_wait_timeout, flags);
 }
 bool open_tables(THD *thd, const DDL_options_st &options,
-                 TABLE_LIST **tables, uint *counter, uint flags,
-                 Prelocking_strategy *prelocking_strategy);
+                 TABLE_LIST **tables, uint *counter,
+                 uint flags, Prelocking_strategy *prelocking_strategy);
+
 static inline bool
 open_tables(THD *thd, TABLE_LIST **tables, uint *counter, uint flags,
             Prelocking_strategy *prelocking_strategy)
@@ -280,21 +294,17 @@ bool is_equal(const LEX_CSTRING *a, const LEX_CSTRING *b);
 
 class Open_tables_backup;
 /* Functions to work with system tables. */
-bool open_system_tables_for_read(THD *thd, TABLE_LIST *table_list,
-                                 Open_tables_backup *backup);
-void close_system_tables(THD *thd, Open_tables_backup *backup);
+bool open_system_tables_for_read(THD *thd, TABLE_LIST *table_list);
+void close_system_tables(THD *thd);
 void close_mysql_tables(THD *thd);
 TABLE *open_system_table_for_update(THD *thd, TABLE_LIST *one_table);
 TABLE *open_log_table(THD *thd, TABLE_LIST *one_table, Open_tables_backup *backup);
 void close_log_table(THD *thd, Open_tables_backup *backup);
 
-TABLE *open_performance_schema_table(THD *thd, TABLE_LIST *one_table,
-                                     Open_tables_state *backup);
-void close_performance_schema_table(THD *thd, Open_tables_state *backup);
-
 bool close_cached_tables(THD *thd, TABLE_LIST *tables,
                          bool wait_for_refresh, ulong timeout);
-bool close_cached_connection_tables(THD *thd, LEX_CSTRING *connect_string);
+void purge_tables();
+bool flush_tables(THD *thd, flush_tables_type flag);
 void close_all_tables_for_name(THD *thd, TABLE_SHARE *share,
                                ha_extra_function extra,
                                TABLE *skip_table);
@@ -347,13 +357,6 @@ inline void setup_table_map(TABLE *table, TABLE_LIST *table_list, uint tablenr)
   table->force_index= table_list->force_index;
   table->force_index_order= table->force_index_group= 0;
   table->covering_keys= table->s->keys_for_keyread;
-  TABLE_LIST *orig= table_list->select_lex ?
-    table_list->select_lex->master_unit()->derived : 0;
-  if (!orig || !orig->is_merged_derived())
-  {
-    /* Tables merged from derived were set up already.*/
-    table->covering_keys= table->s->keys_for_keyread;
-  }
 }
 
 inline TABLE_LIST *find_table_in_global_list(TABLE_LIST *table,
@@ -371,10 +374,12 @@ inline bool setup_fields_with_no_wrap(THD *thd, Ref_ptr_array ref_pointer_array,
                                       bool allow_sum_func)
 {
   bool res;
-  thd->lex->select_lex.no_wrap_view_item= TRUE;
+  SELECT_LEX *first= thd->lex->first_select_lex();
+  DBUG_ASSERT(thd->lex->current_select == first);
+  first->no_wrap_view_item= TRUE;
   res= setup_fields(thd, ref_pointer_array, item, column_usage,
                     sum_func_list, NULL,  allow_sum_func);
-  thd->lex->select_lex.no_wrap_view_item= FALSE;
+  first->no_wrap_view_item= FALSE;
   return res;
 }
 
@@ -389,6 +394,7 @@ class Prelocking_strategy
 public:
   virtual ~Prelocking_strategy() { }
 
+  virtual void reset(THD *thd) { };
   virtual bool handle_routine(THD *thd, Query_tables_list *prelocking_ctx,
                               Sroutine_hash_entry *rt, sp_head *sp,
                               bool *need_prelocking) = 0;
@@ -396,6 +402,7 @@ public:
                             TABLE_LIST *table_list, bool *need_prelocking) = 0;
   virtual bool handle_view(THD *thd, Query_tables_list *prelocking_ctx,
                            TABLE_LIST *table_list, bool *need_prelocking)= 0;
+  virtual bool handle_end(THD *thd) { return 0; };
 };
 
 
@@ -505,6 +512,10 @@ inline bool open_and_lock_tables(THD *thd, TABLE_LIST *tables,
 
 bool restart_trans_for_tables(THD *thd, TABLE_LIST *table);
 
+bool extend_table_list(THD *thd, TABLE_LIST *tables,
+                       Prelocking_strategy *prelocking_strategy,
+                       bool has_prelocking_list);
+
 /**
   A context of open_tables() function, used to recover
   from a failed open_table() or open_routine() attempt.
@@ -552,14 +563,14 @@ public:
     Set flag indicating that we have already acquired metadata lock
     protecting this statement against GRL while opening tables.
   */
-  void set_has_protection_against_grl()
+  void set_has_protection_against_grl(enum_mdl_type mdl_type)
   {
-    m_has_protection_against_grl= TRUE;
+    m_has_protection_against_grl|= MDL_BIT(mdl_type);
   }
 
-  bool has_protection_against_grl() const
+  bool has_protection_against_grl(enum_mdl_type mdl_type) const
   {
-    return m_has_protection_against_grl;
+    return (bool) (m_has_protection_against_grl & MDL_BIT(mdl_type));
   }
 
 private:
@@ -591,7 +602,7 @@ private:
     Indicates that in the process of opening tables we have acquired
     protection against global read lock.
   */
-  bool m_has_protection_against_grl;
+  mdl_bitmap_t m_has_protection_against_grl;
 };
 
 

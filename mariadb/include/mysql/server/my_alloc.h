@@ -11,7 +11,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 /* 
    Data structures for mysys/my_alloc.c (root memory allocator)
@@ -19,6 +19,8 @@
 
 #ifndef _my_alloc_h
 #define _my_alloc_h
+
+#include <mysql/psi/psi_memory.h>
 
 #define ALLOC_MAX_BLOCK_TO_DROP			4096
 #define ALLOC_MAX_BLOCK_USAGE_BEFORE_DROP	10
@@ -43,7 +45,6 @@ typedef struct st_mem_root
   /* if block have less memory it will be put in 'used' list */
   size_t min_malloc;
   size_t block_size;               /* initial block size */
-  size_t total_alloc;
   unsigned int block_num;          /* allocated blocks counter */
   /* 
      first free block in queue test counter (if it exceed 
@@ -52,7 +53,8 @@ typedef struct st_mem_root
   unsigned int first_block_usage;
 
   void (*error_handler)(void);
-  const char *name;
+
+  PSI_memory_key m_psi_key;
 } MEM_ROOT;
 
 #ifdef  __cplusplus

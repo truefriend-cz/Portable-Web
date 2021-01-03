@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #ifndef RPL_RLI_H
 #define RPL_RLI_H
@@ -219,7 +219,7 @@ public:
   */
   char future_event_master_log_name[FN_REFLEN];
 
-  /* 
+  /*
      Original log name and position of the group we're currently executing
      (whose coordinates are group_relay_log_name/pos in the relay log)
      in the master's binlog. These concern the *group*, because in the master's
@@ -347,7 +347,7 @@ public:
     Number of executed events for SLAVE STATUS.
     Protected by slave_executed_entries_lock
   */
-  int64 executed_entries;
+  Atomic_counter<uint32_t> executed_entries;
 
   /*
     If the end of the hot relay log is made of master's events ignored by the
@@ -387,11 +387,11 @@ public:
   */
   slave_connection_state restart_gtid_pos;
 
-  Relay_log_info(bool is_slave_recovery);
+  Relay_log_info(bool is_slave_recovery, const char* thread_name= "SQL");
   ~Relay_log_info();
 
   /*
-    Invalidate cached until_log_name and group_relay_log_name comparison 
+    Invalidate cached until_log_name and group_relay_log_name comparison
     result. Should be called after any update of group_realy_log_name if
     there chances that sql_thread is running.
   */
@@ -419,7 +419,7 @@ public:
   void close_temporary_tables();
 
   /* Check if UNTIL condition is satisfied. See slave.cc for more. */
-  bool is_until_satisfied(my_off_t);
+  bool is_until_satisfied(Log_event *ev);
   inline ulonglong until_pos()
   {
     DBUG_ASSERT(until_condition == UNTIL_MASTER_POS ||
@@ -427,7 +427,13 @@ public:
     return ((until_condition == UNTIL_MASTER_POS) ? group_master_log_pos :
 	    group_relay_log_pos);
   }
-
+  inline char *until_name()
+  {
+    DBUG_ASSERT(until_condition == UNTIL_MASTER_POS ||
+                until_condition == UNTIL_RELAY_POS);
+    return ((until_condition == UNTIL_MASTER_POS) ? group_master_log_name :
+	    group_relay_log_name);
+  }
   /**
     Helper function to do after statement completion.
 
@@ -564,6 +570,15 @@ private:
     relay_log.info had 4 lines. Now it has 5 lines.
   */
   static const int LINES_IN_RELAY_LOG_INFO_WITH_DELAY= 5;
+  /*
+    Hint for when to stop event distribution by sql driver thread.
+    The flag is set ON by a non-group event when this event is in the middle
+    of a group (e.g a transaction group) so it's too early
+    to refresh the current-relay-log vs until-log cached comparison result.
+    And it is checked and to decide whether it's a right time to do so
+    when the being processed group has been fully scheduled.
+  */
+  bool until_relay_log_names_defer;
 
   /*
     Holds the state of the data in the relay log.
@@ -608,10 +623,20 @@ struct inuse_relaylog {
   /* Number of events in this relay log queued for worker threads. */
   int64 queued_count;
   /* Number of events completed by worker threads. */
-  volatile int64 dequeued_count;
+  Atomic_counter<int64> dequeued_count;
   /* Set when all events have been read from a relaylog. */
   bool completed;
   char name[FN_REFLEN];
+
+  inuse_relaylog(Relay_log_info *rli_arg, rpl_gtid *relay_log_state_arg,
+                 uint32 relay_log_state_count_arg,
+                 const char *name_arg):
+    next(0), rli(rli_arg), relay_log_state(relay_log_state_arg),
+    relay_log_state_count(relay_log_state_count_arg), queued_count(0),
+    dequeued_count(0), completed(false)
+  {
+    strmake_buf(name, name_arg);
+  }
 };
 
 
@@ -757,11 +782,6 @@ struct rpl_group_info
   /* Needs room for "Gtid D-S-N\x00". */
   char gtid_info_buf[5+10+1+10+1+20+1];
 
-  /* List of not yet committed deletions in mysql.gtid_slave_pos. */
-  rpl_slave_state::list_element *pending_gtid_delete_list;
-  /* Domain associated with pending_gtid_delete_list. */
-  uint32 pending_gtid_delete_list_domain;
-
   /*
     The timestamp, from the master, of the commit event.
     Used to do delayed update of rli->last_master_timestamp, for getting
@@ -902,12 +922,6 @@ struct rpl_group_info
   void mark_start_commit();
   char *gtid_info();
   void unmark_start_commit();
-
-  static void pending_gtid_deletes_free(rpl_slave_state::list_element *list);
-  void pending_gtid_deletes_save(uint32 domain_id,
-                                 rpl_slave_state::list_element *list);
-  void pending_gtid_deletes_put_back();
-  void pending_gtid_deletes_clear();
 
   longlong get_row_stmt_start_timestamp()
   {

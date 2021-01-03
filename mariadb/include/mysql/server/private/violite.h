@@ -1,5 +1,5 @@
 /* Copyright (c) 2000, 2012, Oracle and/or its affiliates.
-   Copyright (c) 2012, 2017, MariaDB Corporation.
+   Copyright (c) 2012, 2020, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -11,8 +11,8 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   along with this program; if not, write to the Free Software Foundation, Inc.,
+   51 Franklin Street, Fifth Floor, Boston, MA 02110-1335 USA */
 
 /*
  * Vio Lite.
@@ -38,8 +38,11 @@ typedef struct st_vio Vio;
 enum enum_vio_type
 {
   VIO_CLOSED, VIO_TYPE_TCPIP, VIO_TYPE_SOCKET, VIO_TYPE_NAMEDPIPE,
-  VIO_TYPE_SSL, VIO_TYPE_SHARED_MEMORY
+  VIO_TYPE_SSL
+  /* see also vio_type_names[] */
 };
+#define FIRST_VIO_TYPE VIO_CLOSED
+#define LAST_VIO_TYPE VIO_TYPE_SSL
 
 /**
   VIO I/O events.
@@ -59,6 +62,11 @@ struct vio_keepalive_opts
 };
 
 
+#define VIO_TLSv1_0   1
+#define VIO_TLSv1_1   2
+#define VIO_TLSv1_2   4
+#define VIO_TLSv1_3   8
+
 #define VIO_LOCALHOST 1U                        /* a localhost connection */
 #define VIO_BUFFERED_READ 2U                    /* use buffered read */
 #define VIO_READ_BUFFER_SIZE 16384U             /* size of read buffer */
@@ -68,13 +76,6 @@ Vio* vio_new(my_socket sd, enum enum_vio_type type, uint flags);
 Vio*  mysql_socket_vio_new(MYSQL_SOCKET mysql_socket, enum enum_vio_type type, uint flags);
 #ifdef __WIN__
 Vio* vio_new_win32pipe(HANDLE hPipe);
-Vio* vio_new_win32shared_memory(HANDLE handle_file_map,
-                                HANDLE handle_map,
-                                HANDLE event_server_wrote,
-                                HANDLE event_server_read,
-                                HANDLE event_client_wrote,
-                                HANDLE event_client_read,
-                                HANDLE event_conn_closed);
 #else
 #define HANDLE void *
 #endif /* __WIN__ */
@@ -89,6 +90,7 @@ size_t	vio_write(Vio *vio, const uchar * buf, size_t size);
 int	vio_blocking(Vio *vio, my_bool onoff, my_bool *old_mode);
 my_bool	vio_is_blocking(Vio *vio);
 /* setsockopt TCP_NODELAY at IPPROTO_TCP level, when possible */
+int vio_nodelay(Vio *vio, my_bool on);
 int	vio_fastsend(Vio *vio);
 /* setsockopt SO_KEEPALIVE at SOL_SOCKET level, when possible */
 int	vio_keepalive(Vio *vio, my_bool	onoff);
@@ -110,9 +112,7 @@ my_bool vio_peer_addr(Vio *vio, char *buf, uint16 *port, size_t buflen);
 /* Wait for an I/O event notification. */
 int vio_io_wait(Vio *vio, enum enum_vio_io_event event, int timeout);
 my_bool vio_is_connected(Vio *vio);
-#ifndef DBUG_OFF
 ssize_t vio_pending(Vio *vio);
-#endif
 /* Set timeout for a network operation. */
 extern int vio_timeout(Vio *vio, uint which, int timeout_sec);
 extern void vio_set_wait_callback(void (*before_wait)(void),
@@ -147,14 +147,20 @@ int vio_getnameinfo(const struct sockaddr *sa,
 /* Set yaSSL to use same type as MySQL do for socket handles */
 typedef my_socket YASSL_SOCKET_T;
 #define YASSL_SOCKET_T_DEFINED
+#define template _template /* bug in WolfSSL 4.4.0, see also my_crypt.cc */
 #include <openssl/ssl.h>
+#undef template
 #include <openssl/err.h>
+#ifdef DEPRECATED
+#undef DEPRECATED
+#endif
 
 enum enum_ssl_init_error
 {
   SSL_INITERR_NOERROR= 0, SSL_INITERR_CERT, SSL_INITERR_KEY,
   SSL_INITERR_NOMATCH, SSL_INITERR_BAD_PATHS, SSL_INITERR_CIPHERS,
-  SSL_INITERR_MEMFAIL, SSL_INITERR_DH, SSL_INITERR_LASTERR
+  SSL_INITERR_MEMFAIL, SSL_INITERR_DH, SSL_INITERR_PROTOCOL,
+  SSL_INITERR_LASTERR
 };
 const char* sslGetErrString(enum enum_ssl_init_error err);
 
@@ -166,6 +172,8 @@ struct st_VioSSLFd
 int sslaccept(struct st_VioSSLFd*, Vio *, long timeout, unsigned long *errptr);
 int sslconnect(struct st_VioSSLFd*, Vio *, long timeout, unsigned long *errptr);
 
+void vio_check_ssl_init();
+
 struct st_VioSSLFd
 *new_VioSSLConnectorFd(const char *key_file, const char *cert_file,
 		       const char *ca_file,  const char *ca_path,
@@ -175,11 +183,14 @@ struct st_VioSSLFd
 *new_VioSSLAcceptorFd(const char *key_file, const char *cert_file,
 		      const char *ca_file,const char *ca_path,
 		      const char *cipher, enum enum_ssl_init_error *error,
-                      const char *crl_file, const char *crl_path);
+		      const char *crl_file, const char *crl_path,
+		      ulonglong tls_version);
 void free_vio_ssl_acceptor_fd(struct st_VioSSLFd *fd);
 #endif /* HAVE_OPENSSL */
 
 void vio_end(void);
+
+const char *vio_type_name(enum enum_vio_type vio_type, size_t *len);
 
 #ifdef	__cplusplus
 }
@@ -264,22 +275,10 @@ struct st_vio
 #ifdef HAVE_OPENSSL
   void	  *ssl_arg;
 #endif
-#ifdef HAVE_SMEM
-  HANDLE  handle_file_map;
-  char    *handle_map;
-  HANDLE  event_server_wrote;
-  HANDLE  event_server_read;
-  HANDLE  event_client_wrote;
-  HANDLE  event_client_read;
-  HANDLE  event_conn_closed;
-  size_t  shared_memory_remain;
-  char    *shared_memory_pos;
-#endif /* HAVE_SMEM */
 #ifdef _WIN32
   HANDLE hPipe;
   OVERLAPPED overlapped;
-  DWORD read_timeout_ms;
-  DWORD write_timeout_ms;
+  int shutdown_flag;
 #endif
 };
 #endif /* vio_violite_h_ */

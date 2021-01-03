@@ -2,6 +2,7 @@
 #define PROCEDURE_INCLUDED
 
 /* Copyright (c) 2000, 2010, Oracle and/or its affiliates. All rights reserved.
+   Copyright (c) 2009, 2020, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,7 +15,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 /* When using sql procedures */
 
@@ -44,24 +45,30 @@ public:
      this->name.length= strlen(name_par);
   }
   enum Type type() const { return Item::PROC_ITEM; }
+  Field *create_tmp_field_ex(MEM_ROOT *root, TABLE *table, Tmp_field_src *src,
+                             const Tmp_field_param *param)
+  {
+    /*
+      We can get to here when using a CURSOR for a query with PROCEDURE:
+        DECLARE c CURSOR FOR SELECT * FROM t1 PROCEDURE analyse();
+        OPEN c;
+    */
+    return create_tmp_field_ex_simple(root, table, src, param);
+  }
   virtual void set(double nr)=0;
   virtual void set(const char *str,uint length,CHARSET_INFO *cs)=0;
   virtual void set(longlong nr)=0;
   const Type_handler *type_handler() const=0;
   void set(const char *str) { set(str,(uint) strlen(str), default_charset()); }
-  void make_send_field(THD *thd, Send_field *tmp_field)
-  {
-    init_make_send_field(tmp_field,field_type());
-  }
   unsigned int size_of() { return sizeof(*this);}
   bool check_vcol_func_processor(void *arg)
   {
     DBUG_ASSERT(0); // impossible
     return mark_unsupported_function("proc", arg, VCOL_IMPOSSIBLE);
   }
-  bool get_date(MYSQL_TIME *ltime, ulonglong fuzzydate)
+  bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate)
   {
-    return type_handler()->Item_get_date(this, ltime, fuzzydate);
+    return type_handler()->Item_get_date_with_warn(thd, this, ltime, fuzzydate);
   }
   Item* get_copy(THD *thd) { return 0; }
 };
@@ -82,7 +89,7 @@ public:
   {
     int err_not_used;
     char *end_not_used;
-    value= my_strntod(cs,(char*) str,length, &end_not_used, &err_not_used);
+    value= cs->strntod((char*) str,length, &end_not_used, &err_not_used);
   }
   double val_real() { return value; }
   longlong val_int() { return (longlong) value; }
@@ -101,11 +108,16 @@ class Item_proc_int :public Item_proc
 public:
   Item_proc_int(THD *thd, const char *name_par): Item_proc(thd, name_par)
   { max_length=11; }
-  const Type_handler *type_handler() const { return &type_handler_longlong; }
+  const Type_handler *type_handler() const
+  {
+    if (unsigned_flag)
+      return &type_handler_ulonglong;
+    return &type_handler_slonglong;
+  }
   void set(double nr) { value=(longlong) nr; }
   void set(longlong nr) { value=nr; }
   void set(const char *str,uint length, CHARSET_INFO *cs)
-  { int err; value=my_strntoll(cs,str,length,10,NULL,&err); }
+  { int err; value= cs->strntoll(str,length,10,NULL,&err); }
   double val_real() { return (double) value; }
   longlong val_int() { return value; }
   String *val_str(String *s) { s->set(value, default_charset()); return s; }
@@ -129,14 +141,14 @@ public:
     int err_not_used;
     char *end_not_used;
     CHARSET_INFO *cs= str_value.charset();
-    return my_strntod(cs, (char*) str_value.ptr(), str_value.length(),
-		      &end_not_used, &err_not_used);
+    return cs->strntod((char*) str_value.ptr(), str_value.length(),
+		       &end_not_used, &err_not_used);
   }
   longlong val_int()
   { 
     int err;
     CHARSET_INFO *cs=str_value.charset();
-    return my_strntoll(cs,str_value.ptr(),str_value.length(),10,NULL,&err);
+    return cs->strntoll(str_value.ptr(),str_value.length(),10,NULL,&err);
   }
   String *val_str(String*)
   {

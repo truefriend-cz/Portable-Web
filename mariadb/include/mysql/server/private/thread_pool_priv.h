@@ -13,7 +13,7 @@
 
   You should have received a copy of the GNU General Public License
   along with this program; if not, write to the Free Software
-  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA
+  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA
 */
 
 #ifndef THREAD_POOL_PRIV_INCLUDED
@@ -38,12 +38,6 @@
 #include <table.h>
 #include <sql_list.h>
 
-/* Needed to get access to scheduler variables */
-void* thd_get_scheduler_data(THD *thd);
-void thd_set_scheduler_data(THD *thd, void *data);
-PSI_thread* thd_get_psi(THD *thd);
-void thd_set_psi(THD *thd, PSI_thread *psi);
-
 /* Interface to THD variables and functions */
 void thd_set_killed(THD *thd);
 void thd_clear_errors(THD *thd);
@@ -60,9 +54,6 @@ uint thd_get_net_read_write(THD *thd);
 void thd_set_mysys_var(THD *thd, st_my_thread_var *mysys_var);
 my_socket thd_get_fd(THD *thd);
 int thd_store_globals(THD* thd);
-
-THD *first_global_thread();
-THD *next_global_thread(THD *thd);
 
 /* Print to the MySQL error log */
 void sql_print_error(const char *format, ...);
@@ -85,8 +76,6 @@ bool do_command(THD *thd);
   ensure that the proper MySQL Server logic attached to these events is
   executed.
 */
-/* Initialise a new connection handler thread */
-bool init_new_connection_handler_thread();
 /* Set up connection thread before use as execution thread */
 bool setup_connection_thread_globals(THD *thd);
 /* Prepare connection as part of connection set-up */
@@ -97,8 +86,6 @@ void mysql_audit_release(THD *thd);
 bool thd_is_connection_alive(THD *thd);
 /* Close connection with possible error code */
 void close_connection(THD *thd, uint errcode);
-/* Decrement connection counter */
-void dec_connection_count();
 /* Destroy THD object */
 void delete_thd(THD *thd);
 
