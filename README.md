@@ -26,4 +26,3 @@
 > Released: 26 January 2019 [Changelog](https://www.phpmyadmin.net/news/2019/1/26/security-fix-phpmyadmin-485-released/)
 
 * Access: [http://127.0.0.1:9988](http://pma.localhost/) / [http://pma.localhost](http://pma.localhost) / [http://localhost:9988](http://localhost:9988/) 
-web-portable
