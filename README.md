@@ -1,3 +1,5 @@
+NGINX PHP MariaDB(MySQL) with phpMyAdmin for Windows (portable).
+
 ## NGINX
 > Version: 1.15.11 (Mainline)
 
