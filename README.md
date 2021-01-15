@@ -1,6 +1,6 @@
 NGINX PHP MariaDB(MySQL) with phpMyAdmin for Windows (portable).
 
-web-portable Pack v1.1
+Portable Web Pack v1.1
 
 ---
 
